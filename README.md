@@ -19,7 +19,8 @@
 - Context mapper to identify webpage actionable elements (e.g., buttons, inputs, scroll regions).
 - Intent Resolver for context-aware mapping from gaze to UI elements.
 - Trigger appropriate response based on element type (e.g., open keyboard, click button)
-> [Back to top](#context-aware-gaze-based-interaction-for-users-with-motor-disabilities)
+
+[Back to top](#context-aware-gaze-based-interaction-for-users-with-motor-disabilities)
 
 
 ---
@@ -33,7 +34,8 @@
 - ![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)
 
 > More tools will be added as the project evolves.
-> [Back to top](#context-aware-gaze-based-interaction-for-users-with-motor-disabilities)
+
+[Back to top](#context-aware-gaze-based-interaction-for-users-with-motor-disabilities)
 ---
 
 
@@ -61,25 +63,28 @@
 
 > Full details in [`docs/dataset-overview.md`](docs/dataset-overview.md)
 
-> [🔼 Back to top](#context-aware-gaze-based-interaction-for-users-with-motor-disabilities)
+[Back to top](#context-aware-gaze-based-interaction-for-users-with-motor-disabilities)
 
 ---
 
 
 ## Installation
 - This section is under development.
-> [Back to top](#context-aware-gaze-based-interaction-for-users-with-motor-disabilities)
+  
+[Back to top](#context-aware-gaze-based-interaction-for-users-with-motor-disabilities)
 
 
 ---
 ## Usage
 - Usage instructions will be added after the prototype is ready.
-> [Back to top](#context-aware-gaze-based-interaction-for-users-with-motor-disabilities)
+
+[Back to top](#context-aware-gaze-based-interaction-for-users-with-motor-disabilities)
 
 ---
 ## License
 [MIT License](https://choosealicense.com/licenses/mit/)
-> [Back to top](#context-aware-gaze-based-interaction-for-users-with-motor-disabilities)
+
+[Back to top](#context-aware-gaze-based-interaction-for-users-with-motor-disabilities)
 
 ---
 
