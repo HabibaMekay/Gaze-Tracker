@@ -6,9 +6,10 @@
 ## Table of Contents
 
 - [Features](#features)
+- [Built With](#tech-stack)
+- [Datasets](#Datasets)
 - [Installation](#installation)
 - [Usage](#usage)
-- [Built With](#tech-stack)
 - [License](#license)
 
 ---
@@ -18,7 +19,7 @@
 - Context mapper to identify webpage actionable elements (e.g., buttons, inputs, scroll regions).
 - Intent Resolver for context-aware mapping from gaze to UI elements.
 - Trigger appropriate response based on element type (e.g., open keyboard, click button)
-- [Back to top](#context-aware-gaze-based-interaction-for-users-with-motor-disabilities)
+> [Back to top](#context-aware-gaze-based-interaction-for-users-with-motor-disabilities)
 
 
 ---
@@ -32,27 +33,57 @@
 - ![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)
 
 > More tools will be added as the project evolves.
-- [Back to top](#context-aware-gaze-based-interaction-for-users-with-motor-disabilities)
+> [Back to top](#context-aware-gaze-based-interaction-for-users-with-motor-disabilities)
+---
+
+
+## Datasets
+
+###  Existing Datasets
+
+- **[GazeCapture](https://gazecapture.csail.mit.edu/)**  
+  ~1.5 million webcam-based gaze points. Used to test WebGazer.js accuracy.  
+  Format: CSV (x, y, timestamp) • License: MIT
+
+- **[Rico Dataset](https://interactionmining.org/rico)**  
+  72K Android UI layouts with element annotations.  
+  Format: JSON (bounding boxes, element types) • License: CC-BY
+
+### Planned Datasets
+
+- **Real User Gaze Data**  
+  Target: 10–15 users with motor disabilities.  
+  Format: CSV (timestamp, gaze_x, gaze_y, element_id, action)
+
+- **Synthetic Gaze Data**  
+  Generated programmatically using JS/Python.  
+  Format: CSV (gaze_x, gaze_y, element_id, noise_level)
+
+> Full details in [`docs/dataset-overview.md`](docs/dataset-overview.md)
+
+> [🔼 Back to top](#context-aware-gaze-based-interaction-for-users-with-motor-disabilities)
+
 ---
 
 
 ## Installation
 - This section is under development.
-- [Back to top](#context-aware-gaze-based-interaction-for-users-with-motor-disabilities)
+> [Back to top](#context-aware-gaze-based-interaction-for-users-with-motor-disabilities)
 
 
 ---
 ## Usage
 - Usage instructions will be added after the prototype is ready.
-- [Back to top](#context-aware-gaze-based-interaction-for-users-with-motor-disabilities)
+> [Back to top](#context-aware-gaze-based-interaction-for-users-with-motor-disabilities)
 
 ---
 ## License
 [MIT License](https://choosealicense.com/licenses/mit/)
-- [Back to top](#context-aware-gaze-based-interaction-for-users-with-motor-disabilities)
+> [Back to top](#context-aware-gaze-based-interaction-for-users-with-motor-disabilities)
 
 ---
 
 
 
 [Research Internship Tracking Link](https://docs.google.com/spreadsheets/d/1a3_x1lYoI29PlsTCBJ-RwOVxCyfKYMAR/edit?usp=sharing&ouid=104954934820321621733&rtpof=true&sd=true)
+
