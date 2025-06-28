@@ -8,6 +8,7 @@
 - [Features](#features)
 - [Built With](#tech-stack)
 - [Datasets](#Datasets)
+- [Evaluation Criteria](#evaluation-criteria)
 - [Installation](#installation)
 - [Usage](#usage)
 - [License](#license)
@@ -67,7 +68,11 @@
 [Back to top](#context-aware-gaze-based-interaction-for-users-with-motor-disabilities)
 
 ---
-
+### Evaluation Criteria
+- **Accuracy** : The percentage of correctly performing the intended function
+- **False Positive** : The rate of incorrect or unintended actions
+- **Task Completion Time** : The time taken by users to perform the intended task
+- **User Feedback** : Feedback collected from real users (qualitative), e.g., satisfaction and comfort
 
 ## Installation
 - This section is under development.
