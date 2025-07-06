@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Gaze Testing Web page </title>
+    <link rel="stylesheet" href="./style.css">
+    <link rel="icon" href="./favicon.ico" type="image/x-icon">
+  </head>
+  <body>
+    
+    <main>
+        <h1>This page is made for testing purposes only</h1>  
+    </main>
+    <h2>hoverbale buttons</h2>
+    <p>Click the buttons below to test gaze tracking.</p>
+
+    <button class="button button1" onclick="alert('You clicked the green button')">  Green</button>   
+    <button class="button button2"onclick="alert('You clicked the blue button')" >Blue</button>
+    <button class="button button3" onclick="alert('You clicked the red button')">Red</button> <br><br>
+
+    <h2> scroll box</h2>
+    <p> here you can check scrolling</p>
+
+    <div class="scroll-box">
+        As you can see, once there's enough text in this box, the box will grow scroll bars... that's why we call it a scroll box! You could also place an image into the scroll box.
+    </div><br>
+
+    <h2>try to take input using gaze</h2>
+
+
+
+    <form>
+        <label for="fname">First name:</label><br>
+        <input type="text" id="fname" name="fname"><br><br>
+        <label for="lname">Last name:</label><br>
+        <input type="text" id="lname" name="lname">
+    </form>
+
+    <script src="index.js"></script>
+  </body>
+</html>
