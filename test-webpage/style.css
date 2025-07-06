@@ -41,3 +41,18 @@
     font:16px/26px Georgia, Garamond, Serif;
     overflow:auto;
 }
+
+#webgazerVideoFeed,
+#webgazerFaceOverlay
+ {
+    position: fixed !important;
+    top: 20px !important;   
+    left: 700px !important; 
+}
+
+#webgazerFaceFeedbackBox
+{
+    position: fixed !important;
+      
+    left: 780px !important; 
+}
