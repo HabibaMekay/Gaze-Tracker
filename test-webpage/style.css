@@ -65,6 +65,14 @@
 }
 
 
+/* webgazer prevents hover effect so this fixes that*//* it didnt :)*/
+#webgazerOverlay {
+  pointer-events: none !important;
+}
+
+
+
+
 html {
   scroll-behavior: smooth;
 }
