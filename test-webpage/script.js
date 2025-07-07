@@ -2,6 +2,16 @@ let dwellStartTime = null;
 let dwellThreshold = 1000;
 activeElement = null;
 
+
+webgazer
+  .setRegression('ridge')
+  .showPredictionPoints(true) 
+  .begin();
+
+// Stabilize predictions
+webgazer.params.smoothing = 0.9; // Reduce jitter
+
+
 webgazer.setGazeListener(function(data, elapsedTime) {
 	if (data == null) {
 		dwellStartTime = null;
