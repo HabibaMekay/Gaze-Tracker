@@ -1,6 +1,21 @@
+let dwellStartTime = null;
+let dwellThreshold = 1000;
+activeElement = null;
+
+
+webgazer
+  .setRegression('weightedRidge')
+  .showPredictionPoints(true) 
+  .begin();
+
+// Stabilize predictions
+webgazer.params.smoothing = 0.9; // Reduce jitter
+
 
 webgazer.setGazeListener(function(data, elapsedTime) {
 	if (data == null) {
+		dwellStartTime = null;
+		activeElement = null;
 		return;
 	}
 	var xprediction = data.x; //these x coordinates are relative to the viewport
@@ -26,22 +41,39 @@ for(let i=0;i< DomElements.length;i++) // loop on all dom elements
             closestElement = element; // take it as the closest
         }
 }
-if (closestElement && closestDistance < 120) { // activate while in range (we can change this later for better accuracy:) )
-	const tag = closestElement.tagName.toLowerCase();
-     
-	if (tag=="button" || closestElement.getAttribute("role")==="button"){
-	console.log("button click click")
-	closestElement.click();
-	}
-	else if(tag=="input" || closestElement.getAttribute("role")==="textbox"){
-	console.log("I am a textbox")
-	closestElement.click();
-	}
-	else if(tag=="a" || closestElement.getAttribute("role")==="link"){
-	console.log("I am a link")
-	closestElement.click();
-	}
 
-	    
-}
+
+
+if (closestElement && closestDistance < 120) { //this number must be changed later
+	    const tag = closestElement.tagName.toLowerCase();
+
+        if (activeElement === closestElement) {
+            const dwellTime = Date.now() - dwellStartTime;
+			console.log(`Dwell progress: ${dwellTime}`);
+            if (dwellTime >= dwellThreshold) {
+				console.log(`Dwell progress REAHCED`);
+                	if (tag=="button" || closestElement.getAttribute("role")==="button"){
+					console.log("button click click")
+					closestElement.click();
+					}
+					else if(tag=="input" || closestElement.getAttribute("role")==="textbox"){
+					console.log("I am a textbox")
+					closestElement.click();
+					}
+					else if(tag=="a" || closestElement.getAttribute("role")==="link"){
+					console.log("I am a link")
+					closestElement.click();
+					}
+                dwellStartTime = null; // da reset after click
+                activeElement = null;
+            }
+        } else {
+            
+            activeElement = closestElement;
+            dwellStartTime = Date.now();
+        }
+    } else {
+        dwellStartTime = null;
+        activeElement = null;
+    }
 }).begin();
