@@ -4,7 +4,7 @@ activeElement = null;
 
 
 webgazer
-  .setRegression('ridge')
+  .setRegression('weightedRidge')
   .showPredictionPoints(true) 
   .begin();
 
