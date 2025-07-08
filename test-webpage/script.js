@@ -9,7 +9,7 @@ webgazer
   .begin();
 
 // Stabilize predictions
-webgazer.params.smoothing = 0.9; // Reduce jitter
+webgazer.params.smoothing = 0.95; // Reduce jitter
 
 
 webgazer.setGazeListener(function(data, elapsedTime) {
