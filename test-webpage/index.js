@@ -80,10 +80,10 @@ async function continueDetection(video, detector,canvas) {
         const leftEyeIris = keypoints[469]; // Left eye iris center
 
  // where eye is located, to measure if the eye is looking inward or outward aka left or right
-        const leftEyeInnerCorner = keypoints[133];
+        const leftEyeInnerCorner = keypoints[133]; 
         const leftEyeOuterCorner = keypoints[33];
 
-        const rightEyeInnerCorner = keypoints[362];
+        const rightEyeInnerCorner = keypoints[362]; 
         const rightEyeOuterCorner = keypoints[263];
 
 
@@ -100,17 +100,71 @@ async function continueDetection(video, detector,canvas) {
             
            ctx.beginPath();
            ctx.arc(iris.x, iris.y, 5,  0, 2 * Math.PI); // draw a circle around the iris center
-           ctx.fillStyle = 'green'; 
+           ctx.fillStyle = 'red'; 
+           ctx.fill();
            ctx.closePath();
         }); ctx.restore();
 
-        // we can process the detected face landmarks here
+        // Pc =Pl_corner + Pr_corner
+        // Pl_corner and pr_corner stand for the located left eye inner corner and right eye inner corner
+        const conrnerCenter ={
+            x:(leftEyeInnerCorner.x + rightEyeInnerCorner.x )/2,
+            y:(leftEyeInnerCorner.y + rightEyeInnerCorner.y )/2
+        }
+
+        //PI = Pl_iris + Pr_iris
+        // Pl_iris and Pr_iris stand for the located left and right iris centers, respectively
+
+        const irisCenter = {
+            x: (leftEyeIris.x + rightEyeIris.x) / 2,
+            y: (leftEyeIris.y + rightEyeIris.y) / 2
+        };
+
+        //Vg = PI -Pc
+        // Vg is the gaze vector, which is the vector from the center of the eyes
+
+        const gazeVector = {
+            x: irisCenter.x - conrnerCenter.x,      
+            y: irisCenter.y - conrnerCenter.y
+        };
+
+        // here we are going to normalize to remove scale dependency (gaze estimation will be independent of face size and zoom)
+        // also to handle head movements, to make sure features are usable for mapping to screen coordinates
+        //analogy: to know where someone is pionting according to thier hieght, a child vs an adult can piont in the same direction but at different heights
+        
+        // Vx = Vg.x /L -> L is the distnace between eye corners
+
+
+        const L = calculateDistance(leftEyeInnerCorner, rightEyeInnerCorner); 
+        const Vx = gazeVector.x / L; // Normalize the x component of the gaze vector
+
+        // Vy = Vg.y /H -> H is the nose bridge height
+
+        const noseBridge= keypoints[168];
+        const nosetip = keypoints[2];
+
+        const H = calculateDistance(noseBridge, nosetip); // Calculate the height of the nose bridge
+        const Vy = gazeVector.y / H; // Normalize the y component of the gaze vector
+
+      // THE FINAL NORMALIZED GAZE VECTOR///////////////
+
+      const normalizedGazeVector = {
+            x: Vx,  
+            y: Vy
+        }; console.log('Normalized Gaze Vector:', normalizedGazeVector);
+
     } else {
         console.log('No face detected');
     }
     requestAnimationFrame(() => continueDetection(video, detector,canvas)); // Call the function again for continuous detection
 }
 
+
+// Euclidean distnace
+function calculateDistance(pointA, pointB) {
+
+    return Math.sqrt(Math.pow(pointB.x - pointA.x, 2) + Math.pow(pointB.y - pointA.y, 2));
+}
 
 
 
