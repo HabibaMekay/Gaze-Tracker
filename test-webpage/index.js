@@ -153,6 +153,10 @@ async function continueDetection(video, detector,canvas) {
             y: Vy
         }; console.log('Normalized Gaze Vector:', normalizedGazeVector);
 
+
+
+
+
     } else {
         console.log('No face detected');
     }
@@ -188,9 +192,26 @@ function createCanvas(video) {
 
     document.body.appendChild(canvas);
     return canvas;
-}
-/////////// CANVAS NEEDS TO BE MORE ACCRUATE THAN THIS I GUESS BUT ITS ALMOST GOOD/////
+ /////////// CANVAS NEEDS TO BE MORE ACCRUATE THAN THIS I GUESS BUT ITS ALMOST GOOD/////
 
+
+
+}
+
+
+
+    function createCursor() {
+        const cursor = document.createElement('div');
+        cursor.style.position = 'fixed';
+        cursor.style.width = '10px';
+        cursor.style.height = '10px';
+        cursor.style.backgroundColor = 'red';
+        cursor.style.borderRadius = '50%';
+        cursor.style.pointerEvents = 'none'; // Prevent interaction with the cursor
+        cursor.style.zIndex = '2000'; // Ensure it appears above other content
+        document.body.appendChild(cursor);
+        return cursor;
+    }
 
 
 
@@ -206,8 +227,9 @@ async function main() {
 
     const detector = await loadmodel(); 
     if (!detector) return;
-
     continueDetection(video, detector, canvas); 
+
+  
 }
 
 
