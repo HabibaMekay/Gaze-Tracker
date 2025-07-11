@@ -65,16 +65,22 @@ function showVirtualKeyboard(targetInput) {
     document.body.appendChild(keyboard);
 }
 
-
+// start tracking gaze
 webgazer
+  .setTracker("TFFacemesh") //set a tracker module
   .setRegression('weightedRidge')
   .showPredictionPoints(true) 
   .begin();
 
+
+console.log("Tracker in use:", webgazer.getTracker());
+console.log("All available trackers:", webgazer.trackerModules);
+
+
 // Stabilize predictions
 webgazer.params.smoothing = 0.95; // Reduce jitter
 
-
+// respond to gaze data
 webgazer.setGazeListener(function(data, elapsedTime) {
 	if (data == null) {
 		dwellStartTime = null;
@@ -85,7 +91,7 @@ webgazer.setGazeListener(function(data, elapsedTime) {
 	var yprediction = data.y; //these y coordinates are relative to the viewport
 	console.log(elapsedTime); //elapsed time is based on time since begin was called
 
-	webgazer.showPredictionPoints(true);
+
 
 
 const DomElements = document.querySelectorAll("button, input, textarea, a, .virtual-key, [role='button'], [role='link'], [role='textbox']") // get all dom elements

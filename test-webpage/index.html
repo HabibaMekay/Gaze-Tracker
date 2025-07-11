@@ -53,11 +53,30 @@
         <a href="#section1">Click Me to Smooth Scroll to Section 1 Above</a>
     </div>
 
-     <!-- WebGazer.js library -->
+     <!-- WebGazer.js library
 
     <script src="webgazer.js" type="text/javascript" ></script>
 
-    <script src="script.js"></script>
+    <script src="script.js"></script> -->
+
+    <!-- loading tensorflow.js and facemesh for tetsing only -->
+    <!-- later we should use web_accessible_resources in the manifest.json file -->
+    
+
+<!-- mediapipe + tenserflow -->
+<!-- Require the peer dependencies of face-landmarks-detection. -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
+
+
+<!-- model -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-landmarks-detection"></script>
+
+
+<script src="index.js"></script> 
+
     
   </body>
 </html>
