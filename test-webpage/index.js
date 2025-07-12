@@ -1,3 +1,6 @@
+let smoothedX = 0, smoothedY = 0;// store the last smoothed gaze position
+const SMOOTHING = 0.1;  ///make this bigger to move the dot more quickly (lighter gaze movements)//// smaller to make it more stable and slow
+let baselineVy = null;
 async function camera(){
     // Check if the browser supports the getUserMedia API
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
@@ -59,7 +62,7 @@ async function loadmodel() {
 
 // Start detecting the face in the video stream
 //  canvas is implmented after this function dont be confused :)
-async function continueDetection(video, detector,canvas) {
+async function continueDetection(video, detector,canvas,cursor) {
     const face = await detector.estimateFaces(video);
     const ctx = canvas.getContext('2d');
 
@@ -76,8 +79,8 @@ async function continueDetection(video, detector,canvas) {
 
 
 // Iris centers: tells where the pupil is pionting
-        const rightEyeIris = keypoints[474]; // Right eye iris center
-        const leftEyeIris = keypoints[469]; // Left eye iris center
+        const rightEyeIris = keypoints[477]; // Right eye iris center
+        const leftEyeIris = keypoints[472]; // Left eye iris center
 
  // where eye is located, to measure if the eye is looking inward or outward aka left or right
         const leftEyeInnerCorner = keypoints[133]; 
@@ -123,7 +126,7 @@ async function continueDetection(video, detector,canvas) {
         //Vg = PI -Pc
         // Vg is the gaze vector, which is the vector from the center of the eyes
 
-        const gazeVector = {
+           const gazeVector = {
             x: irisCenter.x - conrnerCenter.x,      
             y: irisCenter.y - conrnerCenter.y
         };
@@ -147,11 +150,50 @@ async function continueDetection(video, detector,canvas) {
         const Vy = gazeVector.y / H; // Normalize the y component of the gaze vector
 
       // THE FINAL NORMALIZED GAZE VECTOR///////////////
+        if (baselineVy === null) { // set baselineVy on first frame ,so head tilts don’t confuse the cursor
+            // capture first stable frame as looking straight
+        baselineVy = Vy;
+        }
 
-      const normalizedGazeVector = {
-            x: Vx,  
-            y: Vy
-        }; console.log('Normalized Gaze Vector:', normalizedGazeVector);
+        const centeredVy = Vy - baselineVy; // subtract baslineVy so look straight is 0
+        const normalizedGazeVector = {
+                x: -Vx,  
+                y:  -centeredVy // Invert x to match screen coordinates, y is inverted to match the screen coordinate system
+         }; 
+        
+        const MAX_PIXELS_X = window.innerWidth; // set the maximum pixels to the window width
+        const MAX_PIXELS_Y = window.innerHeight; // set the maximum pixels to the window height
+        console.log('Vx:', Vx.toFixed(3), 'Vy:', Vy.toFixed(3));
+     
+        smoothedX = smoothedX * (1 - SMOOTHING) + normalizedGazeVector.x * SMOOTHING; //makes the dot glide smoothly using old and new values
+        smoothedY = smoothedY * (1 - SMOOTHING) + normalizedGazeVector.y * SMOOTHING; //1- smoothing means how much of the old value we want to keep, 0.1 means we keep 10% of the old value and 90% of the new value
+
+       const GAZE_SENSITIVITY = 10;  //slight movment of the iris will move the cursor //////we can adjust this to make the cursor more or less sensitive to gaze movements///////
+
+        const dx = smoothedX * MAX_PIXELS_X * GAZE_SENSITIVITY; //turns the normalized gaze vector into pixel movement
+        const dy = smoothedY * MAX_PIXELS_Y * GAZE_SENSITIVITY;
+
+      
+        const centerX = window.innerWidth  / 2; // center of the screen
+        const centerY = window.innerHeight / 2;
+
+        const rawX = centerX + dx - cursor.offsetWidth / 2; // takes the center of the screen and adds the gaze movement, then centers the cursor because the cursor is positioned at the top left corner
+        const rawY = centerY + dy - cursor.offsetHeight / 2;
+
+        const maxX = window.innerWidth - cursor.offsetWidth / 2; //sunbtract half the cursor width so, the dot’s center is placed at the eye's target, not its corner
+        const maxY = window.innerHeight - cursor.offsetHeight / 2;
+
+        const minX = 0 - cursor.offsetWidth / 2;// to make sure the cursor does not go off screen
+        const minY = 0 - cursor.offsetHeight / 2;
+
+        const clampedX = Math.min(Math.max(rawX, minX), maxX);// clamps the x coordinate to be within the screen bounds
+        const clampedY = Math.min(Math.max(rawY, minY), maxY); // if too high or too low, it will be set to the max or min value
+
+        cursor.style.left = `${clampedX}px`; //takes the clamped x and y coordinates and sets the cursor position
+        cursor.style.top  = `${clampedY}px`;
+
+
+        console.log('Normalized Gaze Vector:', normalizedGazeVector);
 
 
 
@@ -160,7 +202,7 @@ async function continueDetection(video, detector,canvas) {
     } else {
         console.log('No face detected');
     }
-    requestAnimationFrame(() => continueDetection(video, detector,canvas)); // Call the function again for continuous detection
+    requestAnimationFrame(() => continueDetection(video, detector,canvas,cursor)); // Call the function again for continuous detection
 }
 
 
@@ -227,7 +269,8 @@ async function main() {
 
     const detector = await loadmodel(); 
     if (!detector) return;
-    continueDetection(video, detector, canvas); 
+    const cursor = createCursor();
+    continueDetection(video, detector, canvas,cursor); 
 
   
 }
