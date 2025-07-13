@@ -193,7 +193,7 @@ async function continueDetection(video, detector,canvas,cursor) {
       
         smoothedX = smoothedX * (1 - SMOOTHING) + normalizedGazeVector.x * SMOOTHING; //makes the dot glide smoothly using old and new values
 
-        smoothedY = smoothedY * (1 - SMOOTHING) + normalizedGazeVector.y * SMOOTHING; //1- smoothing means how much of the old value we want to keep, 0.1 means we keep 10% of the old value and 90% of the new value
+        smoothedY =  smoothedY * (1 - SMOOTHING) + normalizedGazeVector.y * SMOOTHING; //1- smoothing means how much of the old value we want to keep, 0.1 means we keep 10% of the old value and 90% of the new value
 
        const GAZE_SENSITIVITY = 5;  //slight movment of the iris will move the cursor //////we can adjust this to make the cursor more or less sensitive to gaze movements///////
        
@@ -201,7 +201,7 @@ async function continueDetection(video, detector,canvas,cursor) {
 
         const dx = smoothedX * MAX_PIXELS_X * GAZE_SENSITIVITY; //turns the normalized gaze vector into pixel movement
         // flip the y direction to match the screen coordinate system not like x
-        const dy = smoothedY * MAX_PIXELS_Y * GAZE_SENSITIVITY;
+        const dy = -smoothedY * MAX_PIXELS_Y * GAZE_SENSITIVITY;
         
         console.log('SmoothedX:', smoothedX.toFixed(3), 'SmoothedY:', smoothedY.toFixed(3));
 
