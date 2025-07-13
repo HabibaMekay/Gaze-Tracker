@@ -1,5 +1,5 @@
 let smoothedX = 0, smoothedY = 0;// store the last smoothed gaze position
-const SMOOTHING = 0.1;  ///make this bigger to move the dot more quickly (lighter gaze movements)//// smaller to make it more stable and slow
+const SMOOTHING = 0.2;  ///make this bigger to move the dot more quickly (lighter gaze movements)//// smaller to make it more stable and slow
 let baselineVy = null;
 async function camera(){
     // Check if the browser supports the getUserMedia API
@@ -149,29 +149,61 @@ async function continueDetection(video, detector,canvas,cursor) {
         const H = calculateDistance(noseBridge, nosetip); // Calculate the height of the nose bridge
         const Vy = gazeVector.y / H; // Normalize the y component of the gaze vector
 
+       // Debugiing////////////////////////////////////////////////////
+
+        console.log('Left Eye Iris:', leftEyeIris);
+        console.log('Right Eye Iris:', rightEyeIris);
+        console.log('Left Eye Corner:', leftEyeInnerCorner);
+        console.log('Right Eye Corner:', rightEyeInnerCorner);
+        console.log('Nose Bridge:', noseBridge);
+        console.log('Nose Tip:', nosetip);
+        console.log('Raw Gaze Vector:', gazeVector);
+        console.log('Eye corner distance L:', L.toFixed(3));
+        console.log('Nose bridge height H:', H.toFixed(3));
+        console.log('Normalized Vx:', Vx.toFixed(3), 'Normalized Vy:', Vy.toFixed(3));
+
+
+
+    /////////////////////////////////////////////////////////////////////
+
       // THE FINAL NORMALIZED GAZE VECTOR///////////////
-        if (baselineVy === null) { // set baselineVy on first frame ,so head tilts don’t confuse the cursor
+        if (baselineVy === null) { // set baselineVy on first frame "Vy",so head tilts "Vx" don’t confuse the cursor
             // capture first stable frame as looking straight
         baselineVy = Vy;
+        console.log('Baseline Vy set to:', baselineVy.toFixed(3));
         }
-
-        const centeredVy = Vy - baselineVy; // subtract baslineVy so look straight is 0
-        const normalizedGazeVector = {
+         
+          /// screen's Y axis is 0 at the top and increases downwards ////// look down Vy-> increases and vice versa
+        const centeredVy =   Vy- baselineVy ; // subtract baslineVy so look straight is 0 
+        const normalizedGazeVector = {                                      
                 x: -Vx,  
-                y:  -centeredVy // Invert x to match screen coordinates, y is inverted to match the screen coordinate system
+                y:  centeredVy // Invert x to match screen coordinates, y is inverted to match the screen coordinate system
          }; 
+         
+         console.log('Centered Vy (Vy - baselineVy):', centeredVy.toFixed(3));
+
+
+         console.log('Normalized Gaze Vector:', normalizedGazeVector);
         
         const MAX_PIXELS_X = window.innerWidth; // set the maximum pixels to the window width
         const MAX_PIXELS_Y = window.innerHeight; // set the maximum pixels to the window height
         console.log('Vx:', Vx.toFixed(3), 'Vy:', Vy.toFixed(3));
      
+
+      
         smoothedX = smoothedX * (1 - SMOOTHING) + normalizedGazeVector.x * SMOOTHING; //makes the dot glide smoothly using old and new values
+
         smoothedY = smoothedY * (1 - SMOOTHING) + normalizedGazeVector.y * SMOOTHING; //1- smoothing means how much of the old value we want to keep, 0.1 means we keep 10% of the old value and 90% of the new value
 
-       const GAZE_SENSITIVITY = 10;  //slight movment of the iris will move the cursor //////we can adjust this to make the cursor more or less sensitive to gaze movements///////
+       const GAZE_SENSITIVITY = 5;  //slight movment of the iris will move the cursor //////we can adjust this to make the cursor more or less sensitive to gaze movements///////
+       
+       // Here we start to convert gaze to scren movemnet 
 
         const dx = smoothedX * MAX_PIXELS_X * GAZE_SENSITIVITY; //turns the normalized gaze vector into pixel movement
+        // flip the y direction to match the screen coordinate system not like x
         const dy = smoothedY * MAX_PIXELS_Y * GAZE_SENSITIVITY;
+        
+        console.log('SmoothedX:', smoothedX.toFixed(3), 'SmoothedY:', smoothedY.toFixed(3));
 
       
         const centerX = window.innerWidth  / 2; // center of the screen
@@ -191,9 +223,12 @@ async function continueDetection(video, detector,canvas,cursor) {
 
         cursor.style.left = `${clampedX}px`; //takes the clamped x and y coordinates and sets the cursor position
         cursor.style.top  = `${clampedY}px`;
+        
+
+        console.log('dx (pixels):', dx.toFixed(1), 'dy (pixels):', dy.toFixed(1));
+        console.log('Cursor screen position:', { x: clampedX.toFixed(1), y: clampedY.toFixed(1) });
 
 
-        console.log('Normalized Gaze Vector:', normalizedGazeVector);
 
 
 
