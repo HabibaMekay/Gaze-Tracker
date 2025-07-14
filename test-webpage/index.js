@@ -1,6 +1,8 @@
 let smoothedX = 0, smoothedY = 0;// store the last smoothed gaze position
 const SMOOTHING = 0.2;  ///make this bigger to move the dot more quickly (lighter gaze movements)//// smaller to make it more stable and slow
 let baselineVy = null;
+const GAZE_SENSITIVITY_X = 5;  // Horizontal sensitivity
+const GAZE_SENSITIVITY_Y = 40; // Higher vertical sensitivity
 async function camera(){
     // Check if the browser supports the getUserMedia API
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
@@ -177,7 +179,7 @@ async function continueDetection(video, detector,canvas,cursor) {
         const centeredVy =   Vy- baselineVy ; // subtract baslineVy so look straight is 0 
         const normalizedGazeVector = {                                      
                 x: -Vx,  
-                y:  centeredVy // Invert x to match screen coordinates, y is inverted to match the screen coordinate system
+                y:  - centeredVy // Invert x to match screen coordinates, y is inverted to match the screen coordinate system
          }; 
          
          console.log('Centered Vy (Vy - baselineVy):', centeredVy.toFixed(3));
@@ -195,13 +197,12 @@ async function continueDetection(video, detector,canvas,cursor) {
 
         smoothedY =  smoothedY * (1 - SMOOTHING) + normalizedGazeVector.y * SMOOTHING; //1- smoothing means how much of the old value we want to keep, 0.1 means we keep 10% of the old value and 90% of the new value
 
-       const GAZE_SENSITIVITY = 5;  //slight movment of the iris will move the cursor //////we can adjust this to make the cursor more or less sensitive to gaze movements///////
        
        // Here we start to convert gaze to scren movemnet 
 
-        const dx = smoothedX * MAX_PIXELS_X * GAZE_SENSITIVITY; //turns the normalized gaze vector into pixel movement
+        const dx = smoothedX * MAX_PIXELS_X * GAZE_SENSITIVITY_X; //turns the normalized gaze vector into pixel movement
         // flip the y direction to match the screen coordinate system not like x
-        const dy = -smoothedY * MAX_PIXELS_Y * GAZE_SENSITIVITY;
+        const dy = -smoothedY * MAX_PIXELS_Y * GAZE_SENSITIVITY_Y;
         
         console.log('SmoothedX:', smoothedX.toFixed(3), 'SmoothedY:', smoothedY.toFixed(3));
 
