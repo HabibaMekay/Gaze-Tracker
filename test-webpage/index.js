@@ -3,6 +3,9 @@ const SMOOTHING = 0.2;  ///make this bigger to move the dot more quickly (lighte
 let baselineVy = null;
 const GAZE_SENSITIVITY_X = 5;  // Horizontal sensitivity
 const GAZE_SENSITIVITY_Y = 40; // Higher vertical sensitivity
+let baselineFrameCount = 0; // Count frames for baseline adjustment
+const BASELINE_MAX_FRAMES = 30; // Maximum frames to adjust baseline
+const BASELINE_UPDATE_THRESHOLD = 0.005;//ignore head movements that are too large to avoid adjusting the baseline too frequently
 async function camera(){
     // Check if the browser supports the getUserMedia API
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
@@ -50,6 +53,7 @@ async function loadmodel() {
     solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh',
     maxFaces: 1, // Maximum number of faces to detect
     refineLandmarks: true, // Whether to refine the landmarks
+    modelType: 'full' // Use the full model for more accurate detection
     }
 
     const detector = await faceLandmarksDetection.createDetector(model, detectorConfig);    
@@ -71,14 +75,41 @@ async function continueDetection(video, detector,canvas,cursor) {
     ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear the canvas before drawing    
 
     if (face.length > 0) {
+        if (face[0].faceInViewConfidence !== undefined && face[0].faceInViewConfidence < 0.99) {
+            console.warn("Low confidence — skipping frame"); // if confidence is low, skip the frame // maybe add a warning or make users refresh the page
+            requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor));
+            return;
+        }
         console.log('Face detected:', face[0]);
+
 
         const keypoints = face[0].keypoints; // Get the keypoints of the detected face
 // The model returns 478 (Keypoints) facial landmarks :
 // - Left eye iris landmarks: indices 468 to 472 (5 points)
 // - Right eye iris landmarks: indices 473 to 477 (5 points)
 // we are using them to estimate iris center or gaze direction
+         const rightIrisPoints = [keypoints[473], keypoints[474], keypoints[475], keypoints[476], keypoints[477]];// Right eye iris landmarks
+        const leftIrisPoints  = [keypoints[468], keypoints[469], keypoints[470], keypoints[471], keypoints[472]];// Left eye iris landmarks
 
+        function isIrisShapeValid(iris) { //check if the iris shape is valid (circular enough) to get a relaible gaze direction
+            const distances = [];
+            for (let i = 0; i < iris.length; i++) {
+                for (let j = i + 1; j < iris.length; j++) {
+                    const dx = iris[i].x - iris[j].x;
+                    const dy = iris[i].y - iris[j].y;
+                    distances.push(Math.sqrt(dx * dx + dy * dy));
+                }
+            }
+            const maxDist = Math.max(...distances);// Get the maximum distance between any two points in the iris
+            const minDist = Math.min(...distances);
+            return (maxDist / minDist < 2.5); // Check if the ratio of max to min distance is within a threshold (2.5)
+        }
+
+        if (!isIrisShapeValid(rightIrisPoints) || !isIrisShapeValid(leftIrisPoints)) { //if eye is not circleish skip the frame
+            console.warn("Iris shape invalid — skipping frame");
+            requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor)); // Skip the frame if iris shape is not valid
+            return;
+        }
 
 // Iris centers: tells where the pupil is pionting
         const rightEyeIris = keypoints[477]; // Right eye iris center
@@ -148,7 +179,7 @@ async function continueDetection(video, detector,canvas,cursor) {
         const noseBridge= keypoints[168];
         const nosetip = keypoints[2];
 
-        const H = calculateDistance(noseBridge, nosetip); // Calculate the height of the nose bridge
+        const H = Math.max(0.001, calculateDistance(noseBridge, nosetip)); // Calculate the height of the nose bridge//how close the head is to the camera, to avoid division by zero
         const Vy = gazeVector.y / H; // Normalize the y component of the gaze vector
 
        // Debugiing////////////////////////////////////////////////////
@@ -169,12 +200,21 @@ async function continueDetection(video, detector,canvas,cursor) {
     /////////////////////////////////////////////////////////////////////
 
       // THE FINAL NORMALIZED GAZE VECTOR///////////////
-        if (baselineVy === null) { // set baselineVy on first frame "Vy",so head tilts "Vx" don’t confuse the cursor
-            // capture first stable frame as looking straight
-        baselineVy = Vy;
-        console.log('Baseline Vy set to:', baselineVy.toFixed(3));
+        if (baselineFrameCount < BASELINE_MAX_FRAMES) { //caliberate the baseline for the first 30 frames
+        if (baselineVy === null) baselineVy = Vy; // Initialize baselineVy if not set
+        
+        // only update baseline if the user isn't moving their head too much
+        const delta = Math.abs(Vy - baselineVy); // how far the currunt frame's vertical gaze deviates from the baseline // small delta head has not moved much
+        if (delta < BASELINE_UPDATE_THRESHOLD) { //if head movement is small enough, update the baseline
+            baselineVy = baselineVy * 0.9 + Vy * 0.1; // Smoothly update the baseline using a weighted average
+            baselineFrameCount++;
+            console.log(`Auto-adjusting baselineVy (${baselineFrameCount}): ${baselineVy.toFixed(4)}`);
+        } else {
+            console.log("Too much vertical movement — skipping baseline update");
         }
-         
+    }
+
+
           /// screen's Y axis is 0 at the top and increases downwards ////// look down Vy-> increases and vice versa
         const centeredVy =   Vy- baselineVy ; // subtract baslineVy so look straight is 0 
         const normalizedGazeVector = {                                      
