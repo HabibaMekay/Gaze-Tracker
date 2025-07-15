@@ -6,6 +6,28 @@ const GAZE_SENSITIVITY_Y = 40; // Higher vertical sensitivity
 let baselineFrameCount = 0; // Count frames for baseline adjustment
 const BASELINE_MAX_FRAMES = 30; // Maximum frames to adjust baseline
 const BASELINE_UPDATE_THRESHOLD = 0.005;//ignore head movements that are too large to avoid adjusting the baseline too frequently
+let baselineVx = null;
+let minVx =  Infinity, maxVx = -Infinity;
+let minVy =  Infinity, maxVy = -Infinity;
+
+let heatCanvas, heatCtx;
+function createHeatMapLayer() { // Create a canvas for the heatmap layer for detecting patterns in gaze movements
+  heatCanvas = document.createElement('canvas');
+  heatCanvas.width  = window.innerWidth;
+  heatCanvas.height = window.innerHeight;
+  Object.assign(heatCanvas.style, {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    width: '100vw',
+    height: '100vh',
+    pointerEvents: 'none',
+    zIndex: 1500  // Ensure it appears above other content
+  });
+  document.body.appendChild(heatCanvas);
+  heatCtx = heatCanvas.getContext('2d');
+}
+
 async function camera(){
     // Check if the browser supports the getUserMedia API
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
@@ -200,25 +222,31 @@ async function continueDetection(video, detector,canvas,cursor) {
     /////////////////////////////////////////////////////////////////////
 
       // THE FINAL NORMALIZED GAZE VECTOR///////////////
-        if (baselineFrameCount < BASELINE_MAX_FRAMES) { //caliberate the baseline for the first 30 frames
-        if (baselineVy === null) baselineVy = Vy; // Initialize baselineVy if not set
-        
-        // only update baseline if the user isn't moving their head too much
-        const delta = Math.abs(Vy - baselineVy); // how far the currunt frame's vertical gaze deviates from the baseline // small delta head has not moved much
-        if (delta < BASELINE_UPDATE_THRESHOLD) { //if head movement is small enough, update the baseline
-            baselineVy = baselineVy * 0.9 + Vy * 0.1; // Smoothly update the baseline using a weighted average
-            baselineFrameCount++;
-            console.log(`Auto-adjusting baselineVy (${baselineFrameCount}): ${baselineVy.toFixed(4)}`);
-        } else {
-            console.log("Too much vertical movement — skipping baseline update");
-        }
-    }
+    if (baselineFrameCount < BASELINE_MAX_FRAMES) {        // first 30 frames are used to calculate the baseline
+      // This is to avoid adjusting the baseline too frequently, which can lead to instability
 
+      // vertical baseline //
+      if (baselineVy === null) baselineVy = Vy;          
+      const deltaVy = Math.abs(Vy - baselineVy);
+      if (deltaVy < BASELINE_UPDATE_THRESHOLD) {
+        baselineVy = 0.9 * baselineVy + 0.1 * Vy;          
+      }
+
+      // horizontl baseline //
+      if (baselineVx === null) baselineVx = Vx;
+      const deltaVx = Math.abs(Vx - baselineVx);
+      if (deltaVx < BASELINE_UPDATE_THRESHOLD) {
+        baselineVx = 0.9 * baselineVx + 0.1 * Vx;
+      }
+
+      baselineFrameCount++;                                //  increment once per frame
+    } 
 
           /// screen's Y axis is 0 at the top and increases downwards ////// look down Vy-> increases and vice versa
+        const centeredVx = Vx - baselineVx;
         const centeredVy =   Vy- baselineVy ; // subtract baslineVy so look straight is 0 
         const normalizedGazeVector = {                                      
-                x: -Vx,  
+                x: -centeredVx,  
                 y:  - centeredVy // Invert x to match screen coordinates, y is inverted to match the screen coordinate system
          }; 
          
@@ -231,7 +259,7 @@ async function continueDetection(video, detector,canvas,cursor) {
         const MAX_PIXELS_Y = window.innerHeight; // set the maximum pixels to the window height
         console.log('Vx:', Vx.toFixed(3), 'Vy:', Vy.toFixed(3));
      
-
+        
       
         smoothedX = smoothedX * (1 - SMOOTHING) + normalizedGazeVector.x * SMOOTHING; //makes the dot glide smoothly using old and new values
 
@@ -239,10 +267,13 @@ async function continueDetection(video, detector,canvas,cursor) {
 
        
        // Here we start to convert gaze to scren movemnet 
+       function softSigmoid(v, gain ){ // Soft sigmoid function to map gaze values to screen movement // higher gain means less sensitivity, lower gain means more sensitivity
+        // maps -1…+1 to ~-1…+1 but flattens near 0 
+        return v / (1 + Math.abs(v)*gain);
+      }
 
-        const dx = smoothedX * MAX_PIXELS_X * GAZE_SENSITIVITY_X; //turns the normalized gaze vector into pixel movement
-        // flip the y direction to match the screen coordinate system not like x
-        const dy = -smoothedY * MAX_PIXELS_Y * GAZE_SENSITIVITY_Y;
+      const dx = softSigmoid(smoothedX ,0.1) * window.innerWidth  * GAZE_SENSITIVITY_X;
+      const dy = softSigmoid(smoothedY,0.3) * window.innerHeight * GAZE_SENSITIVITY_Y * -1; // Invert dy to match screen coordinates, where down is positive
         
         console.log('SmoothedX:', smoothedX.toFixed(3), 'SmoothedY:', smoothedY.toFixed(3));
 
@@ -271,9 +302,11 @@ async function continueDetection(video, detector,canvas,cursor) {
 
 
 
-
-
-
+      heatCtx.beginPath();
+      heatCtx.arc(clampedX + 5, clampedY + 5, 3, 0, 2 * Math.PI);
+      heatCtx.fillStyle = 'rgba(255, 0, 0, 0.1)';   
+      heatCtx.fill();
+      
 
     } else {
         console.log('No face detected');
@@ -346,6 +379,7 @@ async function main() {
     const detector = await loadmodel(); 
     if (!detector) return;
     const cursor = createCursor();
+    createHeatMapLayer();
     continueDetection(video, detector, canvas,cursor); 
 
   
