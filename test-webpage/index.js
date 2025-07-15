@@ -1,4 +1,3 @@
-// gaze-tracker.js - Calibration-free gaze tracking with single video feed
 let smoothedX = 0, smoothedY = 0;
 const SMOOTHING = 0.85;
 const GAZE_SENSITIVITY_X = 2.2;
@@ -54,6 +53,7 @@ async function initCamera() {
   video.style.position = 'absolute';
   video.style.top = '0';
   video.style.left = '0';
+  video.style.zIndex = '9999';
   container.appendChild(video);
 
   overlayCanvas = document.createElement('canvas');
@@ -65,6 +65,7 @@ async function initCamera() {
   overlayCanvas.style.pointerEvents = 'none';
   overlayCanvas.style.width = '100%';
   overlayCanvas.style.height = '100%';
+  overlayCanvas.style.zIndex = '10001';
   container.appendChild(overlayCanvas);
 
   try {
