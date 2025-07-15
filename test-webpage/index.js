@@ -180,7 +180,7 @@ function estimateGaze(landmarks) {
   const distanceScale = Math.min(2.5, 2000 / faceDistance);
   const gaze = {
     x: -adjustedGaze.x * 0.75 * distanceScale,
-    y: adjustedGaze.y * 0.85 * distanceScale
+    y: -adjustedGaze.y * 0.85 * distanceScale
   };
 
   return gaze;
@@ -188,14 +188,25 @@ function estimateGaze(landmarks) {
 
 function checkLighting(video, canvas) {
   const ctx = canvas.getContext('2d');
-  ctx.drawImage(video, 0, 0, 1, 1);
-  const pixel = ctx.getImageData(0, 0, 1, 1).data;
-  const brightness = (pixel[0] + pixel[1] + pixel[2]) / 3;
-  if (brightness < 40) {
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  const samples = [
+    [canvas.width * 0.25, canvas.height * 0.25],
+    [canvas.width * 0.75, canvas.height * 0.25],
+    [canvas.width * 0.5, canvas.height * 0.5],
+    [canvas.width * 0.25, canvas.height * 0.75],
+    [canvas.width * 0.75, canvas.height * 0.75]
+  ];
+  let totalBrightness = 0;
+  for (const [x, y] of samples) {
+    const pixel = ctx.getImageData(x, y, 1, 1).data;
+    totalBrightness += (pixel[0] + pixel[1] + pixel[2]) / 3;
+  }
+  const brightness = totalBrightness / samples.length;
+  if (brightness < 50) { // Relaxed threshold
     console.warn('Lighting too dark (brightness:', brightness.toFixed(1), '). Add a lamp or increase room lighting.');
     alert('Lighting is too dark (brightness: ' + brightness.toFixed(1) + '). Add a lamp or increase room lighting.');
     return false;
-  } else if (brightness > 220) {
+  } else if (brightness > 200) { // Relaxed threshold
     console.warn('Lighting too bright (brightness:', brightness.toFixed(1), '). Dim lights or avoid direct light sources.');
     alert('Lighting is too bright (brightness: ' + brightness.toFixed(1) + '). Dim lights or avoid direct light sources.');
     return false;
