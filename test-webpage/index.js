@@ -9,6 +9,9 @@ const BASELINE_UPDATE_THRESHOLD = 0.005;//ignore head movements that are too lar
 let baselineVx = null;
 let minVx =  Infinity, maxVx = -Infinity;
 let minVy =  Infinity, maxVy = -Infinity;
+const collectedData = []; // This is where we will save gaze data
+let currentCalibrationTarget = null; // Current red dot position
+let isCollecting = false; // Whether we are currently collecting data
 
 let heatCanvas, heatCtx;
 function createHeatMapLayer() { // Create a canvas for the heatmap layer for detecting patterns in gaze movements
@@ -136,6 +139,26 @@ async function continueDetection(video, detector,canvas,cursor) {
 // Iris centers: tells where the pupil is pionting
         const rightEyeIris = keypoints[477]; // Right eye iris center
         const leftEyeIris = keypoints[472]; // Left eye iris center
+
+        if (isCollecting && currentCalibrationTarget) { // If we are collecting data and have a calibration target(red dot)
+        const timestamp = Date.now(); // Get the current timestamp
+
+        const videoWidth = video.videoWidth; // Get the video width to normalize coordinates to 
+        const videoHeight = video.videoHeight; // Get the video height
+
+        const sample = { // Create a sample object with the collected data
+            timestamp,
+            left_iris_x: (leftEyeIris.x / videoWidth).toFixed(5),// Normalize iris coordinates by video dimensions
+            left_iris_y: (leftEyeIris.y / videoHeight).toFixed(5), //scalled to 0-1 range so it works on any screen size
+            right_iris_x: (rightEyeIris.x / videoWidth).toFixed(5),
+            right_iris_y: (rightEyeIris.y / videoHeight).toFixed(5),
+            gaze_x: currentCalibrationTarget.x.toFixed(0), // where the red dot is located
+            gaze_y: currentCalibrationTarget.y.toFixed(0) 
+        };
+
+        collectedData.push(sample); // Add the sample to the collected data array
+        }
+
 
  // where eye is located, to measure if the eye is looking inward or outward aka left or right
         const leftEyeInnerCorner = keypoints[133]; 
@@ -364,26 +387,102 @@ function createCanvas(video) {
         return cursor;
     }
 
+    function downloadCSV(data) { // Function to download collected gaze data as a CSV file to train on it later
+        if (data.length === 0) { 
+            alert("No data to download");
+            return;
+        }
+
+        const csvRows = []; // Array to hold CSV rows
+        const headers = Object.keys(data[0]); // Get the headers from the first data object
+        csvRows.push(headers.join(',')); // Add headers to the first row
+
+        for (const row of data) {   // Iterate through each data object and create a CSV row
+            const values = headers.map(h => row[h]); // Get values for each header
+            csvRows.push(values.join(',')); // Join values with commas, and add the string as a new row
+        }
+
+        const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' }); // turns all csv roes into a single string separated by new lines // blob is a file in memory
+        const url = URL.createObjectURL(blob); //points to the blob in memory (pretend it is a file (data stored but not saved on disk yet))
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'gaze_data.csv'; // Set the file name for download
+        a.click(); // simmulate a click to trigger the download
+        URL.revokeObjectURL(url); // Clean up the temp URL object to free memory
+        }
+
+
+        const calibrationPoints = [ // 3x3 grid of calibration points
+        [0.2, 0.2], [0.5, 0.2], [0.8, 0.2],
+        [0.2, 0.5], [0.5, 0.5], [0.8, 0.5],
+        [0.2, 0.8], [0.5, 0.8], [0.8, 0.8]
+        ];
+
+        let currentPointIndex = 0; // Index of the current calibration point
+        let dotElement = null; // Element to display the red dot
+
+        function showNextCalibrationPoint() { // Function to show the next calibration point
+        if (dotElement) { // If a dot is already displayed, remove it
+            document.body.removeChild(dotElement);
+            dotElement = null; // clear the old dot before showing the next one
+        }
+
+        if (currentPointIndex >= calibrationPoints.length) { // If all calibration points have been shown, finish calibration
+            console.log(" Calibration complete");
+            downloadCSV(collectedData); // call the download csv function to save the collected data
+            return;
+        }
+
+        const [xRatio, yRatio] = calibrationPoints[currentPointIndex]; // takes the next calibration point ratios
+        const x = window.innerWidth * xRatio; // Calculate the x position based on the ratio and window width
+        const y = window.innerHeight * yRatio;
+
+        currentCalibrationTarget = { x, y }; //set red dot position to the current calibration target
+        isCollecting = false; // stop collecting until the next point is shown
+
+        dotElement = document.createElement('div'); // Create a new div element for the red dot
+        dotElement.style.position = 'fixed';
+        dotElement.style.left = `${x - 10}px`;
+        dotElement.style.top = `${y - 10}px`; // subtract 10 to center the dot
+        dotElement.style.width = '20px';
+        dotElement.style.height = '20px';
+        dotElement.style.backgroundColor = 'black';
+        dotElement.style.borderRadius = '50%';
+        dotElement.style.zIndex = 3000;
+        document.body.appendChild(dotElement); // Append the dot to the body
+
+        // Wait 1 second, then collect for 3 seconds
+        setTimeout(() => {
+            isCollecting = true; 
+            console.log(` Collecting at point ${currentPointIndex + 1}`); // because index starts at 0
+            setTimeout(() => {
+            isCollecting = false;
+            currentPointIndex++; // move to the next point
+            showNextCalibrationPoint(); //show next point 
+            }, 3000); // Collect data for 3 seconds at this point
+        }, 1000); // Wait 1 second before starting to collect data
+        }
 
 
 
 
 
 
-async function main() {
-    const video = await camera();
-    if (!video) return;
+        async function main() {
+            const video = await camera();
+            if (!video) return;
 
-    const canvas = createCanvas(video); 
+            const canvas = createCanvas(video); 
 
-    const detector = await loadmodel(); 
-    if (!detector) return;
-    const cursor = createCursor();
-    createHeatMapLayer();
-    continueDetection(video, detector, canvas,cursor); 
+            const detector = await loadmodel(); 
+            if (!detector) return;
+            const cursor = createCursor();
+            createHeatMapLayer();
+            continueDetection(video, detector, canvas,cursor); 
+            showNextCalibrationPoint();
 
-  
-}
+        
+        }
 
 
 
