@@ -1,16 +1,12 @@
 {
-  "name": "training",
+  "name": "test-webpage",
   "version": "1.0.0",
-  "main": "train.js",
+  "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "dependencies": {
-    "@tensorflow/tfjs-node": "^4.22.0",
-    "csv-parser": "^3.2.0"
-  },
   "description": ""
 }
