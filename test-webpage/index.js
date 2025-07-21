@@ -1,8 +1,8 @@
 let smoothedX = 0, smoothedY = 0;// store the last smoothed gaze position
-const SMOOTHING = 0.2;  ///make this bigger to move the dot more quickly (lighter gaze movements)//// smaller to make it more stable and slow
+const SMOOTHING = 0.1;  ///make this bigger to move the dot more quickly (lighter gaze movements)//// smaller to make it more stable and slow
 let baselineVy = null;
-const GAZE_SENSITIVITY_X = 5;  // Horizontal sensitivity
-const GAZE_SENSITIVITY_Y = 40; // Higher vertical sensitivity
+const GAZE_SENSITIVITY_X = 2.5;  // Horizontal sensitivity
+const GAZE_SENSITIVITY_Y = 10; // Higher vertical sensitivity
 let baselineFrameCount = 0; // Count frames for baseline adjustment
 const BASELINE_MAX_FRAMES = 30; // Maximum frames to adjust baseline
 const BASELINE_UPDATE_THRESHOLD = 0.005;//ignore head movements that are too large to avoid adjusting the baseline too frequently
@@ -300,7 +300,7 @@ async function continueDetection(video, detector,canvas,cursor) {
         return v / (1 + Math.abs(v)*gain);
       }
 
-      const dx = softSigmoid(smoothedX ,0.1) * window.innerWidth  * GAZE_SENSITIVITY_X;
+      const dx = softSigmoid(smoothedX ,0.4) * window.innerWidth  * GAZE_SENSITIVITY_X;
       const dy = softSigmoid(smoothedY,0.3) * window.innerHeight * GAZE_SENSITIVITY_Y * -1; // Invert dy to match screen coordinates, where down is positive
         
         console.log('SmoothedX:', smoothedX.toFixed(3), 'SmoothedY:', smoothedY.toFixed(3));
