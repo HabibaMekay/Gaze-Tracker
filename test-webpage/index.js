@@ -133,16 +133,20 @@ function drawCircleFrame(ctx, nosetip,leftEyeInnerCorner, rightEyeInnerCorner, c
 
 // Start detecting the face in the video stream
 //  canvas is implmented after this function dont be confused :)
-async function continueDetection(video, detector,canvas,cursor) {
+async function continueDetection(video, detector,canvas,cursor,gazeModel) {
     const face = await detector.estimateFaces(video);
     const ctx = canvas.getContext('2d');
+    //////////////////// FOR THE MODEL ///////////////////////
+    let modelDx = 0;
+    let modelDy = 0;
+    /////////////////////////////////////////////////////////
 
     ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear the canvas before drawing    
 
     if (face.length > 0) {
         if (face[0].faceInViewConfidence !== undefined && face[0].faceInViewConfidence < 0.99) {
             console.warn("Low confidence — skipping frame"); // if confidence is low, skip the frame // maybe add a warning or make users refresh the page
-            requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor));
+            requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor,gazeModel));
             return;
         }
         console.log('Face detected:', face[0]);
@@ -172,7 +176,7 @@ async function continueDetection(video, detector,canvas,cursor) {
 
         if (!isIrisShapeValid(rightIrisPoints) || !isIrisShapeValid(leftIrisPoints)) { //if eye is not circleish skip the frame
             console.warn("Iris shape invalid — skipping frame");
-            requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor)); // Skip the frame if iris shape is not valid
+            requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor,gazeModel)); // Skip the frame if iris shape is not valid
             return;
         }
 
@@ -185,6 +189,28 @@ async function continueDetection(video, detector,canvas,cursor) {
 
         const videoWidth = video.videoWidth; // Get the video width to normalize coordinates to 
         const videoHeight = video.videoHeight; // Get the video height
+
+        ////////////////////FOR THE MODEL/////////////////////
+
+        const inputTensor = tf.tensor2d([[
+        leftEyeIris.x / videoWidth,
+        leftEyeIris.y / videoHeight,
+        rightEyeIris.x / videoWidth,
+        rightEyeIris.y / videoHeight
+        ]]);
+
+
+        const prediction = gazeModel.predict(inputTensor);
+        const [predX, predY] = prediction.dataSync(); // These are in 0–1 normalized screen coordinates
+        inputTensor.dispose();
+        prediction.dispose();
+
+        let modelDx = predX * window.innerWidth;
+        let modelDy = predY * window.innerHeight;
+
+
+        //////////////////////////////////////////////////////
+        //////////////////////////////////////////////////////
 
         const sample = { // Create a sample object with the collected data
             timestamp,
@@ -274,7 +300,7 @@ async function continueDetection(video, detector,canvas,cursor) {
         );
                 if (!isInsideHeadFrame) { // If the nose tip is outside the head frame, skip the frame
                     console.warn("Nose tip outside head frame — skipping frame");   
-                    requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor));
+                    requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor,gazeModel));
                     return;} // Skip the frame if the nose tip is outside the head frame
         // End of head frame////////////////////////////////////////////////
 
@@ -375,6 +401,15 @@ async function continueDetection(video, detector,canvas,cursor) {
        
       const dx = smoothedX * window.innerWidth  * GAZE_SENSITIVITY_X;
       const dy = smoothedY * window.innerHeight * GAZE_SENSITIVITY_Y * -1; // Invert dy to match screen coordinates, where down is positive
+
+      ///////////////////////FRO THE MODEL/////////////////////
+
+        const FUSION_WEIGHT = 0.5; // tune between 0 (ML only) to 1 (vector only)
+
+        const fusedDx = FUSION_WEIGHT * dx + (1 - FUSION_WEIGHT) * modelDx;
+        const fusedDy = FUSION_WEIGHT * dy + (1 - FUSION_WEIGHT) * modelDy;
+
+      ////////////////////////////////////////////////////////
        
 
 
@@ -384,10 +419,14 @@ async function continueDetection(video, detector,canvas,cursor) {
       
         const centerX = window.innerWidth  / 2; // center of the screen
         const centerY = window.innerHeight / 2;
+        //////////////////////// FOR THE MODEL ///////////////////////
+        // const rawX = centerX + dx - cursor.offsetWidth / 2; // takes the center of the screen and adds the gaze movement, then centers the cursor because the cursor is positioned at the top left corner
+        // const rawY = centerY + dy - cursor.offsetHeight / 2;
 
-        const rawX = centerX + dx - cursor.offsetWidth / 2; // takes the center of the screen and adds the gaze movement, then centers the cursor because the cursor is positioned at the top left corner
-        const rawY = centerY + dy - cursor.offsetHeight / 2;
+        const rawX = centerX + fusedDx - cursor.offsetWidth / 2;
+        const rawY = centerY + fusedDy - cursor.offsetHeight / 2;
 
+///////////////////////////////////////////////////////////////////////////////
         const maxX = window.innerWidth - cursor.offsetWidth / 2; //sunbtract half the cursor width so, the dot’s center is placed at the eye's target, not its corner
         const maxY = window.innerHeight - cursor.offsetHeight / 2;
 
@@ -415,7 +454,7 @@ async function continueDetection(video, detector,canvas,cursor) {
     } else {
         console.log('No face detected');
     }
-    requestAnimationFrame(() => continueDetection(video, detector,canvas,cursor)); // Call the function again for continuous detection
+    requestAnimationFrame(() => continueDetection(video, detector,canvas,cursor,gazeModel)); // Call the function again for continuous detection
 }
 
 
@@ -494,11 +533,22 @@ function createCanvas(video) {
         }
 
 
-        const calibrationPoints = [ // 3x3 grid of calibration points
-        [0.2, 0.2], [0.5, 0.2], [0.8, 0.2],
-        [0.2, 0.5], [0.5, 0.5], [0.8, 0.5],
-        [0.2, 0.8], [0.5, 0.8], [0.8, 0.8]
+        // const calibrationPoints = [
+        // [0.1, 0.1], [0.5, 0.1], [0.9, 0.1],
+        // [0.1, 0.5], [0.5, 0.5], [0.9, 0.5],
+        // [0.1, 0.9], [0.5, 0.9], [0.9, 0.9]
+        // ];
+
+        ///// just in case needed:
+        const calibrationPoints = [
+        [0.02, 0.02], [0.25, 0.02], [0.5, 0.02], [0.75, 0.02], [0.98, 0.02],
+        [0.02, 0.25], [0.25, 0.25], [0.5, 0.25], [0.75, 0.25], [0.98, 0.25],
+        [0.02, 0.5],  [0.25, 0.5],  [0.5, 0.5],  [0.75, 0.5],  [0.98, 0.5],
+        [0.02, 0.75], [0.25, 0.75], [0.5, 0.75], [0.75, 0.75], [0.98, 0.75],
+        [0.02, 0.98], [0.25, 0.98], [0.5, 0.98], [0.75, 0.98], [0.98, 0.98]
         ];
+
+
 
         let currentPointIndex = 0; // Index of the current calibration point
         let dotElement = null; // Element to display the red dot
@@ -551,6 +601,7 @@ function createCanvas(video) {
 
 
         async function main() {
+            const gazeModel = await tf.loadLayersModel('model/model.json');
             const video = await camera();
             if (!video) return;
 
@@ -560,7 +611,7 @@ function createCanvas(video) {
             if (!detector) return;
             const cursor = createCursor();
             createHeatMapLayer();
-            continueDetection(video, detector, canvas,cursor); 
+            continueDetection(video, detector, canvas,cursor,gazeModel); 
             showNextCalibrationPoint();
 
         
