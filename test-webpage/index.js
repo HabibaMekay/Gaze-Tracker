@@ -1,11 +1,10 @@
 let smoothedX = 0, smoothedY = 0;// store the last smoothed gaze position
 const SMOOTHING = 0.1;  ///make this bigger to move the dot more quickly (lighter gaze movements)//// smaller to make it more stable and slow
 let baselineVy = null;
-// x a bit larger than y cuz horizontal range from eyes is larger
-const GAZE_SENSITIVITY_X = 2.5;  // Horizontal sensitivity
-const GAZE_SENSITIVITY_Y = 4.5; // Higher vertical sensitivity
-const AMPLIFYX = 3;  // Amplification factor to make the gaze vector more pronounced on the screen
-const AMPLIFYY = 8; 
+const GAZE_SENSITIVITY_X = 0.5;  // Horizontal sensitivity
+const GAZE_SENSITIVITY_Y = 1; // Higher vertical sensitivity
+const AMPLIFY_RIGHT = 17, AMPLIFY_LEFT = 8;
+const AMPLIFY_UP = 50, AMPLIFY_DOWN = 20;
 let baselineFrameCount = 0; // Count frames for baseline adjustment
 const BASELINE_MAX_FRAMES = 30; // Maximum frames to adjust baseline
 const BASELINE_UPDATE_THRESHOLD = 0.005;//ignore head movements that are too large to avoid adjusting the baseline too frequently
@@ -282,12 +281,15 @@ async function continueDetection(video, detector,canvas,cursor) {
         //  }; 
          
 
-        const centeredVx = (Vx - baselineVx) * AMPLIFYX;
-        const centeredVy = (Vy - baselineVy) * AMPLIFYY;
+        const centeredVx = (Vx - baselineVx) ;
+        const centeredVy = (Vy - baselineVy) ;
+
+        const amplifiedVx = centeredVx < 0 ? centeredVx * AMPLIFY_LEFT : centeredVx * AMPLIFY_RIGHT;
+        const amplifiedVy = centeredVy < 0 ? centeredVy * AMPLIFY_UP : centeredVy * AMPLIFY_DOWN;
 
         const normalizedGazeVector = {
-            x: -centeredVx,  
-            y: -centeredVy   
+        x: -amplifiedVx,
+        y: -amplifiedVy 
         };
 
 
