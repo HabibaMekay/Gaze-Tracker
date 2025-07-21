@@ -53,8 +53,13 @@ async function camera(){
         const stream = await navigator.mediaDevices.getUserMedia({ video: true });
         // Get the video element
         video.srcObject = stream;
-        // Play the video
-        await video.play();
+
+        // Wait for the video to be ready
+             await new Promise(resolve => {
+                if (video.readyState >= 2) return resolve(); // 2 is have metadata -> the video has loaded enogh metadata to get width and height
+                video.onloadedmetadata = () => resolve(); // if not ready, wait for metadata to load
+            });
+
         return video; 
         } catch (error) {
         console.error('Error accessing the camera:', error);
@@ -188,7 +193,7 @@ async function continueDetection(video, detector,canvas,cursor) {
 
         // Pc =Pl_corner + Pr_corner
         // Pl_corner and pr_corner stand for the located left eye inner corner and right eye inner corner
-        const conrnerCenter ={
+        const cornerCenter ={
             x:(leftEyeInnerCorner.x + rightEyeInnerCorner.x )/2,
             y:(leftEyeInnerCorner.y + rightEyeInnerCorner.y )/2
         }
@@ -205,8 +210,8 @@ async function continueDetection(video, detector,canvas,cursor) {
         // Vg is the gaze vector, which is the vector from the center of the eyes
 
            const gazeVector = {
-            x: irisCenter.x - conrnerCenter.x,      
-            y: irisCenter.y - conrnerCenter.y
+            x: irisCenter.x - cornerCenter.x,      
+            y: irisCenter.y - cornerCenter.y
         };
 
         // here we are going to normalize to remove scale dependency (gaze estimation will be independent of face size and zoom)
@@ -270,7 +275,7 @@ async function continueDetection(video, detector,canvas,cursor) {
         const centeredVy =   Vy- baselineVy ; // subtract baslineVy so look straight is 0 
         const normalizedGazeVector = {                                      
                 x: -centeredVx,  
-                y:  - centeredVy // Invert x to match screen coordinates, y is inverted to match the screen coordinate system
+                y:  - centeredVy // Invert x becuase the video is mirrored, y is inverted to match the screen coordinate system
          }; 
          
          console.log('Centered Vy (Vy - baselineVy):', centeredVy.toFixed(3));
