@@ -3,8 +3,8 @@ const SMOOTHING = 0.1;  ///make this bigger to move the dot more quickly (lighte
 let baselineVy = null;
 const GAZE_SENSITIVITY_X = 0.5;  // Horizontal sensitivity
 const GAZE_SENSITIVITY_Y = 1; // Higher vertical sensitivity
-const AMPLIFY_RIGHT = 17, AMPLIFY_LEFT = 8;
-const AMPLIFY_UP = 50, AMPLIFY_DOWN = 20;
+const AMPLIFY_RIGHT = 14, AMPLIFY_LEFT = 10;
+const AMPLIFY_UP = 40, AMPLIFY_DOWN = 20;
 let baselineFrameCount = 0; // Count frames for baseline adjustment
 const BASELINE_MAX_FRAMES = 30; // Maximum frames to adjust baseline
 const BASELINE_UPDATE_THRESHOLD = 0.005;//ignore head movements that are too large to avoid adjusting the baseline too frequently
@@ -95,6 +95,39 @@ async function loadmodel() {
      return detector; 
 
 
+    
+}
+
+
+
+
+
+function drawCircleFrame(ctx, nosetip,leftEyeInnerCorner, rightEyeInnerCorner, canvas) {
+
+
+    const distanceForCicrleFrame = calculateDistance(leftEyeInnerCorner,rightEyeInnerCorner);
+    const radius = distanceForCicrleFrame * 2; // Calculate the radius of the circle based on the distance between the inner corners of the eyes
+    const headFrameCenter = {
+        x: canvas.width / 2, // Center of the canvas
+        y: canvas.height / 2 
+    };
+
+   const noseOffsetX = nosetip.x - headFrameCenter.x; // how far is nose from center of the frame
+   const noseOffsetY = nosetip.y - headFrameCenter.y;
+   const distanceFromCenter = Math.sqrt(noseOffsetX * noseOffsetX + noseOffsetY * noseOffsetY); // Calculate the distance from the center of the frame to the nose tip
+   const isInsideFrame = distanceFromCenter <= radius; 
+    
+    ctx.save();
+    ctx.translate(canvas.width, 0);
+    ctx.scale(-1, 1);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = isInsideFrame ? 'lime' : 'red';
+    ctx.beginPath();
+    ctx.arc(headFrameCenter.x, headFrameCenter.y, radius, 0, 2 * Math.PI);
+    ctx.stroke();
+    ctx.restore();
+
+    return isInsideFrame;
     
 }
 
@@ -230,6 +263,21 @@ async function continueDetection(video, detector,canvas,cursor) {
 
         const noseBridge= keypoints[168];
         const nosetip = keypoints[2];
+
+        // For the head frame//////////////////////////////////////////////
+        const isInsideHeadFrame = drawCircleFrame(
+        ctx,
+        nosetip,
+        leftEyeInnerCorner,
+        rightEyeInnerCorner,
+        canvas
+        );
+                if (!isInsideHeadFrame) { // If the nose tip is outside the head frame, skip the frame
+                    console.warn("Nose tip outside head frame — skipping frame");   
+                    requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor));
+                    return;} // Skip the frame if the nose tip is outside the head frame
+        // End of head frame////////////////////////////////////////////////
+
 
         const H = Math.max(0.001, calculateDistance(noseBridge, nosetip)); // Calculate the height of the nose bridge//how close the head is to the camera, to avoid division by zero
         const Vy = gazeVector.y / H; // Normalize the y component of the gaze vector
