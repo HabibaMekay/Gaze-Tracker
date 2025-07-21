@@ -1,8 +1,11 @@
 let smoothedX = 0, smoothedY = 0;// store the last smoothed gaze position
 const SMOOTHING = 0.1;  ///make this bigger to move the dot more quickly (lighter gaze movements)//// smaller to make it more stable and slow
 let baselineVy = null;
+// x a bit larger than y cuz horizontal range from eyes is larger
 const GAZE_SENSITIVITY_X = 2.5;  // Horizontal sensitivity
-const GAZE_SENSITIVITY_Y = 10; // Higher vertical sensitivity
+const GAZE_SENSITIVITY_Y = 4.5; // Higher vertical sensitivity
+const AMPLIFYX = 3;  // Amplification factor to make the gaze vector more pronounced on the screen
+const AMPLIFYY = 8; 
 let baselineFrameCount = 0; // Count frames for baseline adjustment
 const BASELINE_MAX_FRAMES = 30; // Maximum frames to adjust baseline
 const BASELINE_UPDATE_THRESHOLD = 0.005;//ignore head movements that are too large to avoid adjusting the baseline too frequently
@@ -271,13 +274,30 @@ async function continueDetection(video, detector,canvas,cursor) {
     } 
 
           /// screen's Y axis is 0 at the top and increases downwards ////// look down Vy-> increases and vice versa
-        const centeredVx = Vx - baselineVx;
-        const centeredVy =   Vy- baselineVy ; // subtract baslineVy so look straight is 0 
-        const normalizedGazeVector = {                                      
-                x: -centeredVx,  
-                y:  - centeredVy // Invert x becuase the video is mirrored, y is inverted to match the screen coordinate system
-         }; 
+        // const centeredVx = Vx - baselineVx;
+        // const centeredVy =   Vy- baselineVy ; // subtract baslineVy so look straight is 0 
+        // const normalizedGazeVector = {                                      
+        //         x: -centeredVx,  
+        //         y:  - centeredVy // Invert x becuase the video is mirrored, y is inverted to match the screen coordinate system
+        //  }; 
          
+
+        const centeredVx = (Vx - baselineVx) * AMPLIFYX;
+        const centeredVy = (Vy - baselineVy) * AMPLIFYY;
+
+        const normalizedGazeVector = {
+            x: -centeredVx,  
+            y: -centeredVy   
+        };
+
+
+
+
+
+
+
+
+
          console.log('Centered Vy (Vy - baselineVy):', centeredVy.toFixed(3));
 
 
@@ -300,9 +320,15 @@ async function continueDetection(video, detector,canvas,cursor) {
         return v / (1 + Math.abs(v)*gain);
       }
 
-      const dx = softSigmoid(smoothedX ,0.4) * window.innerWidth  * GAZE_SENSITIVITY_X;
-      const dy = softSigmoid(smoothedY,0.3) * window.innerHeight * GAZE_SENSITIVITY_Y * -1; // Invert dy to match screen coordinates, where down is positive
-        
+    //   const dx = softSigmoid(smoothedX ,0.1) * window.innerWidth  * GAZE_SENSITIVITY_X;
+    //   const dy = softSigmoid(smoothedY,0.1) * window.innerHeight * GAZE_SENSITIVITY_Y * -1; // Invert dy to match screen coordinates, where down is positive
+       
+      const dx = smoothedX * window.innerWidth  * GAZE_SENSITIVITY_X;
+      const dy = smoothedY * window.innerHeight * GAZE_SENSITIVITY_Y * -1; // Invert dy to match screen coordinates, where down is positive
+       
+
+
+
         console.log('SmoothedX:', smoothedX.toFixed(3), 'SmoothedY:', smoothedY.toFixed(3));
 
       
@@ -368,6 +394,7 @@ function createCanvas(video) {
     canvas.style.pointerEvents = 'none';
     canvas.style.width = video.style.width;
     canvas.style.height = video.style.height;
+
 
     document.body.appendChild(canvas);
     return canvas;
