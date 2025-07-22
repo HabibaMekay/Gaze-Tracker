@@ -20,6 +20,7 @@ function createHeatMapLayer() { // Create a canvas for the heatmap layer for det
   heatCanvas = document.createElement('canvas');
   heatCanvas.width  = window.innerWidth;
   heatCanvas.height = window.innerHeight;
+
   Object.assign(heatCanvas.style, {
     position: 'fixed',
     top: 0,
@@ -212,15 +213,18 @@ async function continueDetection(video, detector,canvas,cursor,gazeModel) {
         //////////////////////////////////////////////////////
         //////////////////////////////////////////////////////
 
-        const sample = { // Create a sample object with the collected data
+        const sample = {
             timestamp,
-            left_iris_x: (leftEyeIris.x / videoWidth).toFixed(5),// Normalize iris coordinates by video dimensions
-            left_iris_y: (leftEyeIris.y / videoHeight).toFixed(5), //scalled to 0-1 range so it works on any screen size
+            left_iris_x: (leftEyeIris.x / videoWidth).toFixed(5),
+            left_iris_y: (leftEyeIris.y / videoHeight).toFixed(5),
             right_iris_x: (rightEyeIris.x / videoWidth).toFixed(5),
             right_iris_y: (rightEyeIris.y / videoHeight).toFixed(5),
-            gaze_x: currentCalibrationTarget.x.toFixed(0), // where the red dot is located
-            gaze_y: currentCalibrationTarget.y.toFixed(0) 
+            gaze_x: currentCalibrationTarget.x.toFixed(0),
+            gaze_y: currentCalibrationTarget.y.toFixed(0),
+            screen_width: window.innerWidth,   // <--- add this
+            screen_height: window.innerHeight  // <--- add this
         };
+
 
         collectedData.push(sample); // Add the sample to the collected data array
         }
@@ -568,6 +572,8 @@ function createCanvas(video) {
         const [xRatio, yRatio] = calibrationPoints[currentPointIndex]; // takes the next calibration point ratios
         const x = window.innerWidth * xRatio; // Calculate the x position based on the ratio and window width
         const y = window.innerHeight * yRatio;
+
+        console.log(window.innerWidth+ "   eww  "+ window.innerHeight);
 
         currentCalibrationTarget = { x, y }; //set red dot position to the current calibration target
         isCollecting = false; // stop collecting until the next point is shown
