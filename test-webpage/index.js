@@ -389,18 +389,11 @@ async function continueDetection(video, detector,canvas,cursor,gazeModel) {
      
         
       
-        smoothedX = smoothedX * (1 - SMOOTHING) + normalizedGazeVector.x * SMOOTHING; //makes the dot glide smoothly using old and new values
+        // smoothedX = smoothedX * (1 - SMOOTHING) + normalizedGazeVector.x * SMOOTHING; //makes the dot glide smoothly using old and new values
 
-        smoothedY =  smoothedY * (1 - SMOOTHING) + normalizedGazeVector.y * SMOOTHING; //1- smoothing means how much of the old value we want to keep, 0.1 means we keep 10% of the old value and 90% of the new value
+        // smoothedY =  smoothedY * (1 - SMOOTHING) + normalizedGazeVector.y * SMOOTHING; //1- smoothing means how much of the old value we want to keep, 0.1 means we keep 10% of the old value and 90% of the new value
         
 
-        /// UNCOMMENT WHEN READY TO BE INTEGRATED///////////
-        //////////////////// FOR THE TEMPORAL FILTERING//////////////////////
-        //REMOVE   THE PREVOIUS TWO SMOOTHED LINES AS THE FOLLOWING  IS THE INTEGRATION OF THEM WITH THE SLIDING WINDOWS
-
-        // const temporallySmoothed = temporalFilter(normalizedGazeVector.x, normalizedGazeVector.y);
-        // const smoothedX = temporallySmoothed.x  * window.innerWidth * GAZE_SENSITIVITY_X;
-        // const smoothedY = temporallySmoothed.y  * window.innerHeight * GAZE_SENSITIVITY_Y * -1;
 
 
        ////////////////////////////////////////////////////////////////////////////
@@ -413,9 +406,20 @@ async function continueDetection(video, detector,canvas,cursor,gazeModel) {
     //   const dx = softSigmoid(smoothedX ,0.1) * window.innerWidth  * GAZE_SENSITIVITY_X;
     //   const dy = softSigmoid(smoothedY,0.1) * window.innerHeight * GAZE_SENSITIVITY_Y * -1; // Invert dy to match screen coordinates, where down is positive
        
-      const dx = smoothedX * window.innerWidth  * GAZE_SENSITIVITY_X;
-      const dy = smoothedY * window.innerHeight * GAZE_SENSITIVITY_Y * -1; // Invert dy to match screen coordinates, where down is positive
+    //   const dx = smoothedX * window.innerWidth  * GAZE_SENSITIVITY_X;
+    //   const dy = smoothedY * window.innerHeight * GAZE_SENSITIVITY_Y * -1; // Invert dy to match screen coordinates, where down is positive
 
+
+        /// UNCOMMENT WHEN READY TO BE INTEGRATED///////////
+        //////////////////// FOR THE TEMPORAL FILTERING//////////////////////
+        //REMOVE THE PREVOIUS 4 SMOOTHED LINES AS THE FOLLOWING  IS THE INTEGRATION OF THEM WITH THE SLIDING WINDOWS
+
+        const temporallySmoothed = temporalFilter(normalizedGazeVector.x, normalizedGazeVector.y);
+        const smoothedX = temporallySmoothed.x;
+        const smoothedY = temporallySmoothed.y;
+        const dx = smoothedX  * window.innerWidth * GAZE_SENSITIVITY_X;
+        const dy = smoothedY * window.innerHeight * GAZE_SENSITIVITY_Y * -1;
+        
       ///////////////////////FRO THE MODEL/////////////////////
 
         const FUSION_WEIGHT = 0.5; // tune between 0 (ML only) to 1 (vector only)
