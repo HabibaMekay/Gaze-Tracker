@@ -3,8 +3,8 @@ const SMOOTHING = 0.1;  ///make this bigger to move the dot more quickly (lighte
 let baselineVy = null;
 const GAZE_SENSITIVITY_X = 0.5;  // Horizontal sensitivity
 const GAZE_SENSITIVITY_Y = 1; // Higher vertical sensitivity
-const AMPLIFY_RIGHT = 14, AMPLIFY_LEFT = 10;
-const AMPLIFY_UP = 40, AMPLIFY_DOWN = 20;
+const AMPLIFY_RIGHT = 13, AMPLIFY_LEFT = 35;
+const AMPLIFY_UP = 74, AMPLIFY_DOWN = 55;
 let baselineFrameCount = 0; // Count frames for baseline adjustment
 const BASELINE_MAX_FRAMES = 30; // Maximum frames to adjust baseline
 const BASELINE_UPDATE_THRESHOLD = 0.005;//ignore head movements that are too large to avoid adjusting the baseline too frequently
