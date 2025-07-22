@@ -151,3 +151,40 @@ if (closestElement && closestDistance < 120) { //this number must be changed lat
         activeElement = null;
     }
 });
+
+function ContextualScore(gazeX, gazeY) {
+    const elements = document.querySelectorAll("button, input, textarea, a, .virtual-key, [role='button'], [role='link'], [role='textbox']");
+    let bestElement = null; // no best element yet
+    let bestScore = -Infinity; // initialize to a very low value
+ 
+    elements.forEach(element => { // loop through all elements
+        const rect = element.getBoundingClientRect(); // get size and position info
+        const centerX = rect.left + rect.width / 2; // center x coordinate
+        const centerY = rect.top + rect.height / 2; // center y coordinate
+
+        if (rect.width === 0 || rect.height === 0 || getComputedStyle(element).visibility === 'hidden' || getComputedStyle(element).display === 'none') { // skip invisible elements
+            return;
+        }
+
+        const distance = Math.sqrt((centerX - gazeX) ** 2 + (centerY - gazeY) ** 2); // euclidean distance between the gaze and the element center
+        const sizeFactor = Math.min(rect.width * rect.height / 10000, 1); // bigger elements get more weight
+        const distanceScore = Math.max(0, 1 - distance / 400); // closer elements get more weight, max distance is 400 it is normalized to 0-1
+
+        let typeScore = 0; // score based on element type
+        const tag = element.tagName.toLowerCase();
+        if (tag === 'button' || element.getAttribute("role") === "button") typeScore = 1.2; /// we can change these scores later///
+        else if (tag === 'input' || tag === 'textarea' || element.getAttribute("role") === "textbox") typeScore = 1.3;
+        else if (tag === 'a' || element.getAttribute("role") === "link") typeScore = 1.0;
+        else if (element.classList.contains('virtual-key')) typeScore = 1.1;
+        else typeScore = 0.5;
+
+        const totalScore = distanceScore * typeScore * sizeFactor; // get the final score by considering distance/size/type
+
+        if (totalScore > bestScore) { // if this element has a better score than the previous best
+            bestScore = totalScore;
+            bestElement = element;
+        }
+    });
+
+    return bestElement; // return the best element found
+}
