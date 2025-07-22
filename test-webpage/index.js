@@ -3,7 +3,7 @@ const SMOOTHING = 0.1;  ///make this bigger to move the dot more quickly (lighte
 let baselineVy = null;
 const GAZE_SENSITIVITY_X = 0.5;  // Horizontal sensitivity
 const GAZE_SENSITIVITY_Y = 1; // Higher vertical sensitivity
-const AMPLIFY_RIGHT = 13, AMPLIFY_LEFT = 35;
+const AMPLIFY_RIGHT = 13, AMPLIFY_LEFT = 35; // reversed
 const AMPLIFY_UP = 74, AMPLIFY_DOWN = 55;
 let baselineFrameCount = 0; // Count frames for baseline adjustment
 const BASELINE_MAX_FRAMES = 30; // Maximum frames to adjust baseline
@@ -392,8 +392,18 @@ async function continueDetection(video, detector,canvas,cursor,gazeModel) {
         smoothedX = smoothedX * (1 - SMOOTHING) + normalizedGazeVector.x * SMOOTHING; //makes the dot glide smoothly using old and new values
 
         smoothedY =  smoothedY * (1 - SMOOTHING) + normalizedGazeVector.y * SMOOTHING; //1- smoothing means how much of the old value we want to keep, 0.1 means we keep 10% of the old value and 90% of the new value
+        
 
-       
+        /// UNCOMMENT WHEN READY TO BE INTEGRATED///////////
+        //////////////////// FOR THE TEMPORAL FILTERING//////////////////////
+        //REMOVE   THE PREVOIUS TWO SMOOTHED LINES AS THE FOLLOWING  IS THE INTEGRATION OF THEM WITH THE SLIDING WINDOWS
+
+        // const temporallySmoothed = temporalFilter(normalizedGazeVector.x, normalizedGazeVector.y);
+        // const smoothedX = temporallySmoothed.x  * window.innerWidth * GAZE_SENSITIVITY_X;
+        // const smoothedY = temporallySmoothed.y  * window.innerHeight * GAZE_SENSITIVITY_Y * -1;
+
+
+       ////////////////////////////////////////////////////////////////////////////
        // Here we start to convert gaze to scren movemnet 
        function softSigmoid(v, gain ){ // Soft sigmoid function to map gaze values to screen movement // higher gain means less sensitivity, lower gain means more sensitivity
         // maps -1…+1 to ~-1…+1 but flattens near 0 
@@ -601,7 +611,36 @@ function createCanvas(video) {
         }, 1000); // Wait 1 second before starting to collect data
         }
 
+    // Temporal filter helper --> to be added////////////
+    const sliding_window = 500; //sliding window length -> keep all gaze samples from last half second
+    const slidingWindows = []; // to store gaze x, gaze y and timestamp
 
+    function temporalFilter(x, y){
+
+        const timestamp = performance.now(); // Get the current timestamp -> perforamance better than date.now
+        slidingWindows.push({ x, y, timestamp }); // Add the new sample to the sliding window
+
+        while (slidingWindows.length && timestamp - slidingWindows[0].timestamp > sliding_window) { // Remove samples older than the sliding window length
+            slidingWindows.shift(); 
+        }
+
+        let sumX = 0, sumY = 0; // Initialize sums for x and y coordinates
+        for (const sample of slidingWindows) { // Iterate through the samples in the sliding window
+            sumX += sample.x; // Sum the x coordinates
+            sumY += sample.y; // Sum the y coordinates
+        }
+        const count = slidingWindows.length || 1 // Get the number of samples in the sliding window, the 1 is a safe fallback just incase ma7de4 3aref bardo
+
+        // return the moving average as mentioned in the proposal
+        return {
+            x: sumX / count, 
+            y: sumY / count 
+        };
+
+
+    }
+
+    /////////////////////////////////////////////////////
 
 
 
