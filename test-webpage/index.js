@@ -47,6 +47,109 @@ function createHeatMapLayer() { // Create a canvas for the heatmap layer for det
   document.body.appendChild(heatCanvas);
   heatCtx = heatCanvas.getContext('2d');
 }
+let activeElement = null; // Tracks the currently focused element
+let dwellStartTime = null; // Tracks when dwell started
+const dwellThreshold = 1000; // Dwell time threshold in milliseconds (1 second)
+
+function ContextualScore(gazeX, gazeY) {
+    const elements = document.querySelectorAll("button, input, textarea, a, .virtual-key, [role='button'], [role='link'], [role='textbox']");
+    let bestElement = null;
+    let bestScore = -Infinity;
+
+    elements.forEach(element => {
+        const rect = element.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+
+        if (rect.width === 0 || rect.height === 0 || getComputedStyle(element).visibility === 'hidden' || getComputedStyle(element).display === 'none') {
+            return;
+        }
+
+        const distance = Math.sqrt((centerX - gazeX) ** 2 + (centerY - gazeY) ** 2);
+        const sizeFactor = Math.min(rect.width * rect.height / 10000, 1);
+        const distanceScore = Math.max(0, 1 - distance / 400);
+
+        let typeScore = 0;
+        const tag = element.tagName.toLowerCase();
+        if (tag === 'button' || element.getAttribute("role") === "button") typeScore = 1.2;
+        else if (tag === 'input' || tag === 'textarea' || element.getAttribute("role") === "textbox") typeScore = 1.3;
+        else if (tag === 'a' || element.getAttribute("role") === "link") typeScore = 1.0;
+        else if (element.classList.contains('virtual-key')) typeScore = 1.1;
+        else typeScore = 0.5;
+
+        const totalScore = distanceScore * typeScore * sizeFactor;
+
+        if (totalScore > bestScore) {
+            bestScore = totalScore;
+            bestElement = element;
+        }
+    });
+
+    return bestElement;
+}
+
+function showVirtualKeyboard(targetInput) {
+    let existingKeyboard = document.getElementById('virtual-keyboard');
+    if (existingKeyboard) existingKeyboard.remove();
+
+    const keyboard = document.createElement('div');
+    keyboard.id = 'virtual-keyboard';
+    keyboard.style.position = 'fixed';
+    keyboard.style.bottom = '10px';
+    keyboard.style.left = '50%';
+    keyboard.style.transform = 'translateX(-50%)';
+    keyboard.style.background = '#fff';
+    keyboard.style.border = '1px solid #ccc';
+    keyboard.style.padding = '10px';
+    keyboard.style.zIndex = '1000';
+    keyboard.style.boxShadow = '0 0 10px rgba(0,0,0,0.3)';
+    keyboard.style.borderRadius = '10px';
+
+    const rows = [
+        ['1','2','3','4','5','6','7','8','9','0','←'],
+        ['Q','W','E','R','T','Y','U','I','O','P'],
+        ['A','S','D','F','G','H','J','K','L'],
+        ['Z','X','C','V','B','N','M'],
+        ['Space']
+    ];
+
+    rows.forEach(row => {
+        const rowDiv = document.createElement('div');
+        rowDiv.style.display = 'flex';
+        rowDiv.style.justifyContent = 'center';
+        rowDiv.style.marginBottom = '5px';
+
+        row.forEach(key => {
+            const btn = document.createElement('button');
+            btn.textContent = key === 'Space' ? '____' : key;
+			btn.classList.add("virtual-key");
+            btn.style.padding = key === 'Space' ? '10px 80px' : '10px 14px';
+            btn.style.margin = '3px';
+            btn.style.fontSize = '16px';
+            btn.style.cursor = 'pointer';
+            btn.style.border = '1px solid #888';
+            btn.style.borderRadius = '6px';
+            btn.style.background = '#f2f2f2';
+
+            btn.addEventListener('click', () => {
+                if (key === '←') {
+                    targetInput.value = targetInput.value.slice(0, -1);
+                } else if (key === 'Space') {
+                    targetInput.value += ' ';
+                } else {
+                    targetInput.value += key;
+                }
+                targetInput.dispatchEvent(new Event('input', { bubbles: true }));
+            });
+
+            rowDiv.appendChild(btn);
+        });
+
+        keyboard.appendChild(rowDiv);
+    });
+
+    document.body.appendChild(keyboard);
+}
 
 async function camera(){
     // Check if the browser supports the getUserMedia API
@@ -508,11 +611,56 @@ async function continueDetection(video, detector,canvas,cursor,gazeModel) {
       heatCtx.fillStyle = 'rgba(255, 0, 0, 0.1)';   
       heatCtx.fill();
       
+      if (!isCollecting) { // Only interact when not calibrating
+            const bestElement = ContextualScore(clampedX, clampedY);
+            let closestElement = null;
+            let closestDistance = Infinity;
 
+            if (bestElement) {
+                const rect = bestElement.getBoundingClientRect();
+                const centerX = rect.left + rect.width / 2;
+                const centerY = rect.top + rect.height / 2;
+                closestDistance = Math.sqrt((centerX - clampedX) ** 2 + (centerY - clampedY) ** 2);
+                closestElement = bestElement;
+            }
+
+            if (closestElement && closestDistance < 120) {
+                const tag = closestElement.tagName.toLowerCase();
+                if (activeElement === closestElement) {
+                    const dwellTime = Date.now() - dwellStartTime;
+                    console.log(`Dwell progress: ${dwellTime}`);
+                    if (dwellTime >= dwellThreshold) {
+                        console.log(`Dwell progress REACHED`);
+                        if (tag === "button" || closestElement.getAttribute("role") === "button") {
+                            console.log("Button clicked via gaze");
+                            closestElement.click();
+                        } else if (tag === "input" || tag === "textarea" || closestElement.getAttribute("role") === "textbox") {
+                            console.log("Text input focused via gaze");
+                            closestElement.focus();
+                            showVirtualKeyboard(closestElement);
+                        } else if (tag === "a" || closestElement.getAttribute("role") === "link") {
+                            console.log("Link clicked via gaze");
+                            closestElement.click();
+                        } else if (closestElement.classList.contains('virtual-key')) {
+                            console.log("Virtual key clicked via gaze");
+                            closestElement.click();
+                        }
+                        dwellStartTime = null;
+                        activeElement = null;
+                    }
+                } else {
+                    activeElement = closestElement;
+                    dwellStartTime = Date.now();
+                }
+            } else {
+                dwellStartTime = null;
+                activeElement = null;
+            }
+        }
     } else {
         console.log('No face detected');
     }
-    requestAnimationFrame(() => continueDetection(video, detector,canvas,cursor,gazeModel)); // Call the function again for continuous detection
+    requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor, gazeModel));  // Call the function again for continuous detection
 }
 
 
