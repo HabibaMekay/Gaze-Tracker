@@ -26,7 +26,7 @@ document.body.appendChild(eyeCanvas);
 const eyeCtx = eyeCanvas.getContext('2d');
 //////////////////////////////////////////////////////////////remove /////////////////////////////////////////////////
 navigator.mediaDevices.getUserMedia({ // increase the video resolution to improve gaze tracking accuracy
-  video: { width: 1280, height: 720 },
+  video: { width: 1280, height: 720 }, // { width: 1920, height: 1080, frameRate: { ideal: 60 } 
   facingMode: "user" // Use the front camera
 })
 let heatCanvas, heatCtx;
@@ -87,7 +87,6 @@ async function camera(){
         console.error('getUserMedia is not supported in this browser.');
     }
 }
-
 
 // load the MediaPipe Face Mesh model
 
@@ -464,8 +463,9 @@ async function continueDetection(video, detector,canvas,cursor,gazeModel) {
 
         const FUSION_WEIGHT = 0.5; // tune between 0 (ML only) to 1 (vector only)
 
-        const fusedDx = FUSION_WEIGHT * dx + (1 - FUSION_WEIGHT) * modelDx;
-        const fusedDy = FUSION_WEIGHT * dy + (1 - FUSION_WEIGHT) * modelDy;
+        const CONFIDENCE = face[0].faceInViewConfidence;
+        const fusedDx = CONFIDENCE * dx + (1 - CONFIDENCE) * modelDx; //confidece based fusion 
+        const fusedDy = CONFIDENCE * dy + (1 - CONFIDENCE) * modelDy;
 
       ////////////////////////////////////////////////////////
        
