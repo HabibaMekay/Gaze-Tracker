@@ -622,73 +622,72 @@ async function continueDetection(video, detector, canvas, cursor, gazeModel) {
         console.log('dx (pixels):', dx.toFixed(1), 'dy (pixels):', dy.toFixed(1));
         console.log('Cursor screen position:', { x: clampedX.toFixed(1), y: clampedY.toFixed(1) });
 
-// Magnifier update - put this right after setting cursor position
-if (magnifier && magnifierCtx) {
-    try {
-        const zoomFactor = 2;
-        const captureSize = 100; // Area to capture (will be zoomed 2x)
+// if (magnifier && magnifierCtx) {
+//     try {
+//         const zoomFactor = 2;
+//         const captureSize = 100; // Area to capture (will be zoomed 2x)
         
-        // Get cursor center position
-        const cursorCenterX = clampedX + cursor.offsetWidth / 2;
-        const cursorCenterY = clampedY + cursor.offsetHeight / 2;
+//         // Get cursor center position
+//         const cursorCenterX = clampedX + cursor.offsetWidth / 2;
+//         const cursorCenterY = clampedY + cursor.offsetHeight / 2;
         
-        // Position magnifier near cursor
-        magnifier.style.left = `${cursorCenterX + 20}px`;
-        magnifier.style.top = `${cursorCenterY - magnifier.height - 20}px`;
+//         // Position magnifier near cursor
+//         magnifier.style.left = `${cursorCenterX + 20}px`;
+//         magnifier.style.top = `${cursorCenterY - magnifier.height - 20}px`;
         
-        // Create temporary canvas for capture
-        const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = captureSize;
-        tempCanvas.height = captureSize;
-        const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
+//         // Create temporary canvas for capture
+//         const tempCanvas = document.createElement('canvas');
+//         tempCanvas.width = captureSize;
+//         tempCanvas.height = captureSize;
+//         const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
         
-        // Fill with white background first
-        tempCtx.fillStyle = 'white';
-        tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+//         // Fill with white background first
+//         tempCtx.fillStyle = 'white';
+//         tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
         
-        // Capture screen area - we need to use html2canvas for proper capturing
-        await new Promise(resolve => {
-            html2canvas(document.body, {
-                x: cursorCenterX - captureSize/2,
-                y: cursorCenterY - captureSize/2,
-                width: captureSize,
-                height: captureSize,
-                scale: 1,
-                logging: false,
-                useCORS: true,
-                onclone: (clonedDoc) => {
-                    // Hide the magnifier in the clone to avoid recursion
-                    const clonedMagnifier = clonedDoc.querySelector('canvas[style*="fixed"]');
-                    if (clonedMagnifier) clonedMagnifier.style.display = 'none';
-                }
-            }).then(canvas => {
-                tempCtx.drawImage(canvas, 0, 0, captureSize, captureSize);
-                resolve();
-            });
-        });
+//         // Capture screen area - we need to use html2canvas for proper capturing
+//         await new Promise(resolve => {
+//             html2canvas(document.body, {
+//                 x: cursorCenterX - captureSize/2,
+//                 y: cursorCenterY - captureSize/2,
+//                 width: captureSize,
+//                 height: captureSize,
+//                 scale: 1,
+//                 logging: false,
+//                 useCORS: true,
+//                 onclone: (clonedDoc) => {
+//                     // Hide the magnifier in the clone to avoid recursion
+//                     const clonedMagnifier = clonedDoc.querySelector('canvas[style*="fixed"]');
+//                     if (clonedMagnifier) clonedMagnifier.style.display = 'none';
+//                 }
+//             }).then(canvas => {
+//                 tempCtx.drawImage(canvas, 0, 0, captureSize, captureSize);
+//                 resolve();
+//             });
+//         });
         
-        // Draw to magnifier
-        magnifierCtx.clearRect(0, 0, magnifier.width, magnifier.height);
-        magnifierCtx.drawImage(
-            tempCanvas,
-            0, 0, captureSize, captureSize,
-            0, 0, magnifier.width, magnifier.height
-        );
+//         // Draw to magnifier
+//         magnifierCtx.clearRect(0, 0, magnifier.width, magnifier.height);
+//         magnifierCtx.drawImage(
+//             tempCanvas,
+//             0, 0, captureSize, captureSize,
+//             0, 0, magnifier.width, magnifier.height
+//         );
         
-        // Add crosshair
-        magnifierCtx.strokeStyle = 'red';
-        magnifierCtx.lineWidth = 2;
-        magnifierCtx.beginPath();
-        magnifierCtx.moveTo(magnifier.width/2, 0);
-        magnifierCtx.lineTo(magnifier.width/2, magnifier.height);
-        magnifierCtx.moveTo(0, magnifier.height/2);
-        magnifierCtx.lineTo(magnifier.width, magnifier.height/2);
-        magnifierCtx.stroke();
+//         // Add crosshair
+//         magnifierCtx.strokeStyle = 'red';
+//         magnifierCtx.lineWidth = 2;
+//         magnifierCtx.beginPath();
+//         magnifierCtx.moveTo(magnifier.width/2, 0);
+//         magnifierCtx.lineTo(magnifier.width/2, magnifier.height);
+//         magnifierCtx.moveTo(0, magnifier.height/2);
+//         magnifierCtx.lineTo(magnifier.width, magnifier.height/2);
+//         magnifierCtx.stroke();
         
-    } catch (e) {
-        console.warn("Magnifier error:", e);
-    }
-}
+//     } catch (e) {
+//         console.warn("Magnifier error:", e);
+//     }
+// }
         heatCtx.beginPath();
         heatCtx.arc(clampedX + 5, clampedY + 5, 3, 0, 2 * Math.PI);
         heatCtx.fillStyle = 'rgba(255, 0, 0, 0.1)';   
@@ -929,21 +928,21 @@ function createCanvas(video) {
             if (!detector) return;
             const cursor = createCursor();
             createHeatMapLayer();
-            magnifier = createMagnifier();
-            magnifierCtx = magnifier.getContext('2d');
+            // magnifier = createMagnifier();
+            // magnifierCtx = magnifier.getContext('2d');
             continueDetection(video, detector, canvas, cursor, gazeModel);
             showNextCalibrationPoint();
         }
 
 
-document.addEventListener('keydown', async (event) => {
-    if (event.key.toLowerCase() === 'm') {
-        if (!magnifier) {
-            magnifier = createMagnifier();
-            magnifierCtx = magnifier.getContext('2d');
-        }
-        magnifier.style.display = magnifier.style.display === 'none' ? 'block' : 'none';
-    }
-});
+// document.addEventListener('keydown', async (event) => {
+//     if (event.key.toLowerCase() === 'm') {
+//         if (!magnifier) {
+//             magnifier = createMagnifier();
+//             magnifierCtx = magnifier.getContext('2d');
+//         }
+//         magnifier.style.display = magnifier.style.display === 'none' ? 'block' : 'none';
+//     }
+// });
 
 main();
