@@ -14,6 +14,11 @@ let minVy =  Infinity, maxVy = -Infinity;
 const collectedData = []; // This is where we will save gaze data
 let currentCalibrationTarget = null; // Current red dot position
 let isCollecting = false; // Whether we are currently collecting data
+let taskCompletions = 0;
+let errors = 0;
+let magnifier = null;
+let magnifierCtx = null;
+
 /////////////////////////////////////////////////////////////// remove //////////////////////////////////////////
 const eyeCanvas = document.createElement('canvas');
 eyeCanvas.width = 200;  // adjust for zoom level
@@ -53,15 +58,24 @@ const dwellThreshold = 1000; // Dwell time threshold in milliseconds (1 second)
 
 function ContextualScore(gazeX, gazeY) {
     const elements = document.querySelectorAll("button, input, textarea, a, .virtual-key, [role='button'], [role='link'], [role='textbox']");
-    let bestElement = null;
-    let bestScore = -Infinity;
+    const candidates = [];
 
     elements.forEach(element => {
         const rect = element.getBoundingClientRect();
         const centerX = rect.left + rect.width / 2;
         const centerY = rect.top + rect.height / 2;
 
-        if (rect.width === 0 || rect.height === 0 || getComputedStyle(element).visibility === 'hidden' || getComputedStyle(element).display === 'none') {
+        // Skip non-actionable hna
+        if (
+            rect.width === 0 ||
+            rect.height === 0 ||
+            getComputedStyle(element).visibility === 'hidden' ||
+            getComputedStyle(element).display === 'none' ||
+            element.disabled ||
+            element.readOnly ||
+            element.getAttribute('aria-disabled') === 'true' ||
+            element.getAttribute('aria-hidden') === 'true'
+        ) {
             return;
         }
 
@@ -79,13 +93,50 @@ function ContextualScore(gazeX, gazeY) {
 
         const totalScore = distanceScore * typeScore * sizeFactor;
 
-        if (totalScore > bestScore) {
-            bestScore = totalScore;
-            bestElement = element;
+        if (totalScore > 0.1) {
+            candidates.push({ element, score: totalScore, distance, centerX, centerY });
         }
     });
 
-    return bestElement;
+    //  take top 3
+    candidates.sort((a, b) => b.score - a.score);
+    return candidates.slice(0, 3);
+}
+
+let previousHighlights = [];
+
+function highlightCandidates(candidates) {
+    // Clear previous highlights
+    previousHighlights.forEach(({ element, originalStyle }) => {
+        element.style.border = originalStyle.border;
+        element.style.boxShadow = originalStyle.boxShadow;
+    });
+    previousHighlights = [];
+
+    // Highlight new candidates
+    candidates.forEach(({ element }, index) => {
+        const originalStyle = {
+            border: element.style.border,
+            boxShadow: element.style.boxShadow
+        };
+        // Stronger highlight for the top candidate
+        element.style.border = index === 0 ? '3px solid #ff0000' : '2px solid #ffa500';
+        element.style.boxShadow = index === 0 ? '0 0 10px #ff0000' : '0 0 5px #ffa500';
+        previousHighlights.push({ element, originalStyle });
+    });
+}
+
+function createMagnifier() {
+    const magnifier = document.createElement('canvas');
+    magnifier.width = 200; // Magnifier window size
+    magnifier.height = 200;
+    magnifier.style.position = 'fixed';
+    magnifier.style.border = '2px solid #000';
+    magnifier.style.borderRadius = '50%';
+    magnifier.style.zIndex = '2500';
+    magnifier.style.pointerEvents = 'none';
+    document.body.appendChild(magnifier);
+    return magnifier;
 }
 
 function showVirtualKeyboard(targetInput) {
@@ -249,9 +300,14 @@ function drawCircleFrame(ctx, nosetip,leftEyeInnerCorner, rightEyeInnerCorner, c
     
 }
 
+
+
+
+
+
 // Start detecting the face in the video stream
 //  canvas is implmented after this function dont be confused :)
-async function continueDetection(video, detector,canvas,cursor,gazeModel) {
+async function continueDetection(video, detector, canvas, cursor, gazeModel) {
     const face = await detector.estimateFaces(video);
     const ctx = canvas.getContext('2d');
     //////////////////// FOR THE MODEL ///////////////////////
@@ -268,7 +324,6 @@ async function continueDetection(video, detector,canvas,cursor,gazeModel) {
             return;
         }
         console.log('Face detected:', face[0]);
-
 
         const keypoints = face[0].keypoints; // Get the keypoints of the detected face
 // The model returns 478 (Keypoints) facial landmarks :
@@ -323,8 +378,8 @@ async function continueDetection(video, detector,canvas,cursor,gazeModel) {
         inputTensor.dispose();
         prediction.dispose();
 
-        let modelDx = predX * window.innerWidth;
-        let modelDy = predY * window.innerHeight;
+        modelDx = predX * window.innerWidth;
+        modelDy = predY * window.innerHeight;
 
 
         //////////////////////////////////////////////////////
@@ -387,17 +442,14 @@ async function continueDetection(video, detector,canvas,cursor,gazeModel) {
         ctx.translate(canvas.width, 0);
         ctx.scale(-1, 1);
 
-
-
         [leftEyeIris, rightEyeIris].forEach(iris => {
-           
-            
            ctx.beginPath();
            ctx.arc(iris.x, iris.y, 5,  0, 2 * Math.PI); // draw a circle around the iris center
            ctx.fillStyle = 'red'; 
            ctx.fill();
            ctx.closePath();
-        }); ctx.restore();
+        }); 
+        ctx.restore();
 
         // Pc =Pl_corner + Pr_corner
         // Pl_corner and pr_corner stand for the located left eye inner corner and right eye inner corner
@@ -408,7 +460,6 @@ async function continueDetection(video, detector,canvas,cursor,gazeModel) {
 
         //PI = Pl_iris + Pr_iris
         // Pl_iris and Pr_iris stand for the located left and right iris centers, respectively
-
         const irisCenter = {
             x: (leftEyeIris.x + rightEyeIris.x) / 2,
             y: (leftEyeIris.y + rightEyeIris.y) / 2
@@ -416,8 +467,7 @@ async function continueDetection(video, detector,canvas,cursor,gazeModel) {
 
         //Vg = PI -Pc
         // Vg is the gaze vector, which is the vector from the center of the eyes
-
-           const gazeVector = {
+        const gazeVector = {
             x: irisCenter.x - cornerCenter.x,      
             y: irisCenter.y - cornerCenter.y
         };
@@ -427,13 +477,10 @@ async function continueDetection(video, detector,canvas,cursor,gazeModel) {
         //analogy: to know where someone is pionting according to thier hieght, a child vs an adult can piont in the same direction but at different heights
         
         // Vx = Vg.x /L -> L is the distnace between eye corners
-
-
         const L = calculateDistance(leftEyeInnerCorner, rightEyeInnerCorner); 
         const Vx = gazeVector.x / L; // Normalize the x component of the gaze vector
 
         // Vy = Vg.y /H -> H is the nose bridge height
-
         const noseBridge= keypoints[168];
         const nosetip = keypoints[2];
 
@@ -451,12 +498,10 @@ async function continueDetection(video, detector,canvas,cursor,gazeModel) {
                     return;} // Skip the frame if the nose tip is outside the head frame
         // End of head frame////////////////////////////////////////////////
 
-
         const H = Math.max(0.001, calculateDistance(noseBridge, nosetip)); // Calculate the height of the nose bridge//how close the head is to the camera, to avoid division by zero
         const Vy = gazeVector.y / H; // Normalize the y component of the gaze vector
 
        // Debugiing////////////////////////////////////////////////////
-
         console.log('Left Eye Iris:', leftEyeIris);
         console.log('Right Eye Iris:', rightEyeIris);
         console.log('Left Eye Corner:', leftEyeInnerCorner);
@@ -467,9 +512,6 @@ async function continueDetection(video, detector,canvas,cursor,gazeModel) {
         console.log('Eye corner distance L:', L.toFixed(3));
         console.log('Nose bridge height H:', H.toFixed(3));
         console.log('Normalized Vx:', Vx.toFixed(3), 'Normalized Vy:', Vy.toFixed(3));
-
-
-
     /////////////////////////////////////////////////////////////////////
 
       // THE FINAL NORMALIZED GAZE VECTOR///////////////
@@ -494,14 +536,12 @@ async function continueDetection(video, detector,canvas,cursor,gazeModel) {
     } 
 
           /// screen's Y axis is 0 at the top and increases downwards ////// look down Vy-> increases and vice versa
-        // const centeredVx = Vx - baselineVx;
+          // const centeredVx = Vx - baselineVx;
         // const centeredVy =   Vy- baselineVy ; // subtract baslineVy so look straight is 0 
         // const normalizedGazeVector = {                                      
         //         x: -centeredVx,  
         //         y:  - centeredVy // Invert x becuase the video is mirrored, y is inverted to match the screen coordinate system
         //  }; 
-         
-
         const centeredVx = (Vx - baselineVx) ;
         const centeredVy = (Vy - baselineVy) ;
 
@@ -512,16 +552,7 @@ async function continueDetection(video, detector,canvas,cursor,gazeModel) {
         x: -amplifiedVx,
         y: -amplifiedVy 
         };
-
-
-
-
-
-
-
-
-
-         console.log('Centered Vy (Vy - baselineVy):', centeredVy.toFixed(3));
+        console.log('Centered Vy (Vy - baselineVy):', centeredVy.toFixed(3));
 
 
          console.log('Normalized Gaze Vector:', normalizedGazeVector);
@@ -531,7 +562,7 @@ async function continueDetection(video, detector,canvas,cursor,gazeModel) {
         console.log('Vx:', Vx.toFixed(3), 'Vy:', Vy.toFixed(3));
      
         
-      
+
         // smoothedX = smoothedX * (1 - SMOOTHING) + normalizedGazeVector.x * SMOOTHING; //makes the dot glide smoothly using old and new values
 
         // smoothedY =  smoothedY * (1 - SMOOTHING) + normalizedGazeVector.y * SMOOTHING; //1- smoothing means how much of the old value we want to keep, 0.1 means we keep 10% of the old value and 90% of the new value
@@ -552,76 +583,79 @@ async function continueDetection(video, detector,canvas,cursor,gazeModel) {
     //   const dx = smoothedX * window.innerWidth  * GAZE_SENSITIVITY_X;
     //   const dy = smoothedY * window.innerHeight * GAZE_SENSITIVITY_Y * -1; // Invert dy to match screen coordinates, where down is positive
 
-
+        
         /// UNCOMMENT WHEN READY TO BE INTEGRATED///////////
         //////////////////// FOR THE TEMPORAL FILTERING//////////////////////
         //REMOVE THE PREVOIUS 4 SMOOTHED LINES AS THE FOLLOWING  IS THE INTEGRATION OF THEM WITH THE SLIDING WINDOWS
-
         const temporallySmoothed = temporalFilter(normalizedGazeVector.x, normalizedGazeVector.y);
         const smoothedX = temporallySmoothed.x;
         const smoothedY = temporallySmoothed.y;
-        const dx = smoothedX  * window.innerWidth * GAZE_SENSITIVITY_X;
+        const dx = smoothedX * window.innerWidth * GAZE_SENSITIVITY_X;
         const dy = smoothedY * window.innerHeight * GAZE_SENSITIVITY_Y * -1;
         
       ///////////////////////FRO THE MODEL/////////////////////
-
         const FUSION_WEIGHT = 0.5; // tune between 0 (ML only) to 1 (vector only)
-
         const fusedDx = FUSION_WEIGHT * dx + (1 - FUSION_WEIGHT) * modelDx;
         const fusedDy = FUSION_WEIGHT * dy + (1 - FUSION_WEIGHT) * modelDy;
-
       ////////////////////////////////////////////////////////
-       
-
-
 
         console.log('SmoothedX:', smoothedX.toFixed(3), 'SmoothedY:', smoothedY.toFixed(3));
 
-      
-        const centerX = window.innerWidth  / 2; // center of the screen
+        const centerX = window.innerWidth / 2; // center of the screen
         const centerY = window.innerHeight / 2;
         //////////////////////// FOR THE MODEL ///////////////////////
         // const rawX = centerX + dx - cursor.offsetWidth / 2; // takes the center of the screen and adds the gaze movement, then centers the cursor because the cursor is positioned at the top left corner
         // const rawY = centerY + dy - cursor.offsetHeight / 2;
-
         const rawX = centerX + fusedDx - cursor.offsetWidth / 2;
         const rawY = centerY + fusedDy - cursor.offsetHeight / 2;
-
 ///////////////////////////////////////////////////////////////////////////////
         const maxX = window.innerWidth - cursor.offsetWidth / 2; //sunbtract half the cursor width so, the dot’s center is placed at the eye's target, not its corner
         const maxY = window.innerHeight - cursor.offsetHeight / 2;
-
         const minX = 0 - cursor.offsetWidth / 2;// to make sure the cursor does not go off screen
         const minY = 0 - cursor.offsetHeight / 2;
-
         const clampedX = Math.min(Math.max(rawX, minX), maxX);// clamps the x coordinate to be within the screen bounds
         const clampedY = Math.min(Math.max(rawY, minY), maxY); // if too high or too low, it will be set to the max or min value
-
         cursor.style.left = `${clampedX}px`; //takes the clamped x and y coordinates and sets the cursor position
-        cursor.style.top  = `${clampedY}px`;
+        cursor.style.top = `${clampedY}px`;
         
-
         console.log('dx (pixels):', dx.toFixed(1), 'dy (pixels):', dy.toFixed(1));
         console.log('Cursor screen position:', { x: clampedX.toFixed(1), y: clampedY.toFixed(1) });
 
+        // Magnifier update
+        if (magnifier && magnifierCtx) {
+            const zoomFactor = 2;
+            const captureSize = 100;
+            const captureX = clampedX + cursor.offsetWidth / 2 - captureSize / 2;
+            const captureY = clampedY + cursor.offsetHeight / 2 - captureSize / 2;
 
+            magnifier.style.left = `${clampedX + 20}px`;
+            magnifier.style.top = `${clampedY - magnifier.height - 20}px`;
 
-      heatCtx.beginPath();
-      heatCtx.arc(clampedX + 5, clampedY + 5, 3, 0, 2 * Math.PI);
-      heatCtx.fillStyle = 'rgba(255, 0, 0, 0.1)';   
-      heatCtx.fill();
+            magnifierCtx.clearRect(0, 0, magnifier.width, magnifier.height);
+            try {
+                const bitmap = await createImageBitmap(document.body, captureX, captureY, captureSize, captureSize);
+                magnifierCtx.drawImage(bitmap, 0, 0, magnifier.width, magnifier.height);
+                bitmap.close();
+            } catch (e) {
+                console.warn('Magnifier capture failed:', e);
+            }
+        }
+
+        heatCtx.beginPath();
+        heatCtx.arc(clampedX + 5, clampedY + 5, 3, 0, 2 * Math.PI);
+        heatCtx.fillStyle = 'rgba(255, 0, 0, 0.1)';   
+        heatCtx.fill();
       
-      if (!isCollecting) { // Only interact when not calibrating
-            const bestElement = ContextualScore(clampedX, clampedY);
+        if (!isCollecting) { // Only interact when not calibrating
+            const candidates = ContextualScore(clampedX, clampedY);
+            highlightCandidates(candidates);
+
             let closestElement = null;
             let closestDistance = Infinity;
 
-            if (bestElement) {
-                const rect = bestElement.getBoundingClientRect();
-                const centerX = rect.left + rect.width / 2;
-                const centerY = rect.top + rect.height / 2;
-                closestDistance = Math.sqrt((centerX - clampedX) ** 2 + (centerY - clampedY) ** 2);
-                closestElement = bestElement;
+            if (candidates.length > 0) {
+                closestElement = candidates[0].element;
+                closestDistance = candidates[0].distance;
             }
 
             if (closestElement && closestDistance < 120) {
@@ -631,6 +665,7 @@ async function continueDetection(video, detector,canvas,cursor,gazeModel) {
                     console.log(`Dwell progress: ${dwellTime}`);
                     if (dwellTime >= dwellThreshold) {
                         console.log(`Dwell progress REACHED`);
+                        taskCompletions++;
                         if (tag === "button" || closestElement.getAttribute("role") === "button") {
                             console.log("Button clicked via gaze");
                             closestElement.click();
@@ -653,6 +688,7 @@ async function continueDetection(video, detector,canvas,cursor,gazeModel) {
                     dwellStartTime = Date.now();
                 }
             } else {
+                if (closestDistance > 120) errors++;
                 dwellStartTime = null;
                 activeElement = null;
             }
@@ -662,7 +698,6 @@ async function continueDetection(video, detector,canvas,cursor,gazeModel) {
     }
     requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor, gazeModel));  // Call the function again for continuous detection
 }
-
 
 // Euclidean distnace
 function calculateDistance(pointA, pointB) {
@@ -841,20 +876,29 @@ function createCanvas(video) {
             const gazeModel = await tf.loadLayersModel('model/model.json');
             const video = await camera();
             if (!video) return;
-
-            const canvas = createCanvas(video); 
-
-            const detector = await loadmodel(); 
+            const canvas = createCanvas(video);
+            const detector = await loadmodel();
             if (!detector) return;
             const cursor = createCursor();
             createHeatMapLayer();
-            continueDetection(video, detector, canvas,cursor,gazeModel); 
+            magnifier = createMagnifier();
+            magnifierCtx = magnifier.getContext('2d');
+            continueDetection(video, detector, canvas, cursor, gazeModel);
             showNextCalibrationPoint();
-
-        
         }
 
 
-
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'm' || event.key === 'M') {
+        if (magnifier) {
+            magnifier.remove();
+            magnifier = null;
+            magnifierCtx = null;
+        } else {
+            magnifier = createMagnifier();
+            magnifierCtx = magnifier.getContext('2d');
+        }
+    }
+});
 
 main();
