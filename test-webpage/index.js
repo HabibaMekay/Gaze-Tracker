@@ -384,8 +384,11 @@ async function continueDetection(video, detector, canvas, cursor, gazeModel) {
             right_iris_y: (rightEyeIris.y / videoHeight).toFixed(5),
             gaze_x: currentCalibrationTarget.x.toFixed(0),
             gaze_y: currentCalibrationTarget.y.toFixed(0),
-            screen_width: window.innerWidth,   // <--- add this
-            screen_height: window.innerHeight  // <--- add this
+            screen_width: window.innerWidth,   
+            screen_height: window.innerHeight, 
+
+            target_x: currentCalibrationTarget.x,   
+            target_y: currentCalibrationTarget.y    
         };
 
 
@@ -894,7 +897,7 @@ function createCanvas(video) {
             // magnifier = createMagnifier();
             // magnifierCtx = magnifier.getContext('2d');
             continueDetection(video, detector, canvas, cursor, gazeModel);
-            //showNextCalibrationPoint();
+            showNextCalibrationPoint();
         }
 
 
