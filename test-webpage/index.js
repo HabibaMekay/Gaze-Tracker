@@ -908,3 +908,4 @@ function createCanvas(video) {
 //     }
 // });
 
+main();
