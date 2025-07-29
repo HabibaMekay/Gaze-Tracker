@@ -19,17 +19,7 @@ let errors = 0;
 let magnifier = null;
 let magnifierCtx = null;
 
-/////////////////////////////////////////////////////////////// remove //////////////////////////////////////////
-const eyeCanvas = document.createElement('canvas');
-eyeCanvas.width = 200;  // adjust for zoom level
-eyeCanvas.height = 100;
-eyeCanvas.style.border = "1px solid #ccc";
-eyeCanvas.style.position = "absolute";
-eyeCanvas.style.bottom = "10px";
-eyeCanvas.style.left = "10px";
-document.body.appendChild(eyeCanvas);
-const eyeCtx = eyeCanvas.getContext('2d');
-//////////////////////////////////////////////////////////////remove /////////////////////////////////////////////////
+
 navigator.mediaDevices.getUserMedia({ // increase the video resolution to improve gaze tracking accuracy
   video: { width: 1280, height: 720 },
   facingMode: "user" // Use the front camera
@@ -409,34 +399,7 @@ async function continueDetection(video, detector, canvas, cursor, gazeModel) {
 
         const rightEyeInnerCorner = keypoints[362]; 
         const rightEyeOuterCorner = keypoints[263];
-        // Crop and zoom both eyes
-        //////////////////////////////////////////remove ///////////////////////////////////////////////////////////////////
-        function getEyeBox(inner, outer, margin = 10) {
-            const x = Math.min(inner.x, outer.x) - margin;
-            const y = Math.min(inner.y, outer.y) - margin;
-            const width = Math.abs(inner.x - outer.x) + margin * 2;
-            const height = width / 2; // approx shape of eye
-            return { x, y, width, height };
-        }
 
-        const leftBox = getEyeBox(keypoints[133], keypoints[33]);   // Left eye corners
-        const rightBox = getEyeBox(keypoints[362], keypoints[263]); // Right eye corners
-
-        eyeCtx.clearRect(0, 0, eyeCanvas.width, eyeCanvas.height);
-
-        eyeCtx.drawImage(
-            video,
-            leftBox.x, leftBox.y, leftBox.width, leftBox.height,
-            0, 0, eyeCanvas.width / 2, eyeCanvas.height
-        );
-
-        eyeCtx.drawImage(
-            video,
-            rightBox.x, rightBox.y, rightBox.width, rightBox.height,
-            eyeCanvas.width / 2, 0, eyeCanvas.width / 2, eyeCanvas.height
-        );
-
-    /////////////////////////////////////////////////////////remove ///////////////////////////////////////////////////////
 
         // Mirror drawing to match video
         ctx.save();
