@@ -83,6 +83,7 @@
 ---
 ## Usage
 - Usage instructions will be added after the prototype is ready.
+- currently use python -m http.server to run and it will be available through http://localhost:8000 
 
 [Back to top](#context-aware-gaze-based-interaction-for-users-with-motor-disabilities)
 
