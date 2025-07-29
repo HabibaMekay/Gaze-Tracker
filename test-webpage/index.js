@@ -894,7 +894,7 @@ function createCanvas(video) {
             // magnifier = createMagnifier();
             // magnifierCtx = magnifier.getContext('2d');
             continueDetection(video, detector, canvas, cursor, gazeModel);
-            showNextCalibrationPoint();
+            //showNextCalibrationPoint();
         }
 
 
@@ -908,4 +908,3 @@ function createCanvas(video) {
 //     }
 // });
 
-main();
