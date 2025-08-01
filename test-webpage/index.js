@@ -78,14 +78,23 @@ function ContextualScore(gazeX, gazeY) {
         if (tag === 'button' || element.getAttribute("role") === "button") typeScore = 1.2;
         else if (tag === 'input' || tag === 'textarea' || element.getAttribute("role") === "textbox") typeScore = 1.3;
         else if (tag === 'a' || element.getAttribute("role") === "link") typeScore = 1.0;
-        else if (element.classList.contains('virtual-key')) typeScore = 1.1;
+        else if (element.classList.contains('virtual-key')) { typeScore =1.1}
+    
         else typeScore = 0.5;
-
-        const totalScore = distanceScore * typeScore * sizeFactor;
-
-        if (totalScore > 0.1) {
-            candidates.push({ element, score: totalScore, distance, centerX, centerY });
+        let totalScore;
+        if (element.classList.contains('virtual-key') && (element.textContent.trim() === '____')|| element.textContent.trim() === '←') {
+        if (distance < 50) {
+            totalScore = 0.3; // Only allow if gaze is right on top 
+        } else {
+            totalScore = 0;
         }
+        } else {
+            totalScore = distanceScore * typeScore * sizeFactor;
+        }
+
+            if (totalScore > 0.1) {
+                candidates.push({ element, score: totalScore, distance, centerX, centerY });
+            }
     });
 
     //  take top 3
