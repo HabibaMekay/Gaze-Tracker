@@ -143,6 +143,8 @@ function showVirtualKeyboard(targetInput) {
     let existingKeyboard = document.getElementById('virtual-keyboard');
     if (existingKeyboard) existingKeyboard.remove();
 
+    let isUppercase = true;
+
     const keyboard = document.createElement('div');
     keyboard.id = 'virtual-keyboard';
     keyboard.style.position = 'fixed';
@@ -160,11 +162,13 @@ function showVirtualKeyboard(targetInput) {
         ['1','2','3','4','5','6','7','8','9','0','←'],
         ['Q','W','E','R','T','Y','U','I','O','P'],
         ['A','S','D','F','G','H','J','K','L'],
-        ['Z','X','C','V','B','N','M'],
+        ['⬆','Z','X','C','V','B','N','M'],
         ['Space']
     ];
 
-    rows.forEach(row => {
+    const keyButtons = [];
+
+    rows.forEach((row, rowIndex) => {
         const rowDiv = document.createElement('div');
         rowDiv.style.display = 'flex';
         rowDiv.style.justifyContent = 'center';
@@ -172,8 +176,17 @@ function showVirtualKeyboard(targetInput) {
 
         row.forEach(key => {
             const btn = document.createElement('button');
-            btn.textContent = key === 'Space' ? '____' : key;
-			btn.classList.add("virtual-key");
+            const isLetter = /^[A-Z]$/.test(key);
+
+            if (key === 'Space') {
+                btn.textContent = '____';
+            } else if (isLetter) {
+                btn.textContent = isUppercase ? key : key.toLowerCase();
+            } else {
+                btn.textContent = key;
+            }
+
+            btn.classList.add("virtual-key");
             btn.style.padding = key === 'Space' ? '10px 80px' : '10px 14px';
             btn.style.margin = '3px';
             btn.style.fontSize = '16px';
@@ -181,26 +194,44 @@ function showVirtualKeyboard(targetInput) {
             btn.style.border = '1px solid #888';
             btn.style.borderRadius = '6px';
             btn.style.background = '#f2f2f2';
+            if (key === '⬆') {
+                btn.style.fontWeight = 'bold';
+                btn.addEventListener('click', () => {
+                    isUppercase = !isUppercase;
+                    updateKeyLabels();
+                });
+            } else {
+                btn.addEventListener('click', () => {
+                    if (key === '←') {
+                        targetInput.value = targetInput.value.slice(0, -1);
+                    } else if (key === 'Space') {
+                        targetInput.value += ' ';
+                    } else {
+                        const value = /^[A-Z]$/.test(key) ? (isUppercase ? key : key.toLowerCase()) : key;
+                        targetInput.value += value;
+                    }
+                    targetInput.dispatchEvent(new Event('input', { bubbles: true }));
+                });
+            }
 
-            btn.addEventListener('click', () => {
-                if (key === '←') {
-                    targetInput.value = targetInput.value.slice(0, -1);
-                } else if (key === 'Space') {
-                    targetInput.value += ' ';
-                } else {
-                    targetInput.value += key;
-                }
-                targetInput.dispatchEvent(new Event('input', { bubbles: true }));
-            });
+            if (isLetter) keyButtons.push({ btn, key });
 
             rowDiv.appendChild(btn);
         });
 
         keyboard.appendChild(rowDiv);
+        
     });
+
+    function updateKeyLabels() {
+        keyButtons.forEach(({ btn, key }) => {
+            btn.textContent = isUppercase ? key : key.toLowerCase();
+        });
+    }
 
     document.body.appendChild(keyboard);
 }
+
 
 async function camera(){
     // Check if the browser supports the getUserMedia API
@@ -906,7 +937,7 @@ function createCanvas(video) {
             // magnifier = createMagnifier();
             // magnifierCtx = magnifier.getContext('2d');
             continueDetection(video, detector, canvas, cursor, gazeModel);
-            showNextCalibrationPoint();
+            // showNextCalibrationPoint();
         }
 
 
