@@ -1,10 +1,10 @@
 let smoothedX = 0, smoothedY = 0;// store the last smoothed gaze position
 const SMOOTHING = 0.1;  ///make this bigger to move the dot more quickly (lighter gaze movements)//// smaller to make it more stable and slow
 let baselineVy = null;
-const GAZE_SENSITIVITY_X = 0.5;  // Horizontal sensitivity
-const GAZE_SENSITIVITY_Y = 1; // Higher vertical sensitivity
-const AMPLIFY_RIGHT = 13, AMPLIFY_LEFT = 35; // reversed
-const AMPLIFY_UP = 74, AMPLIFY_DOWN = 55;
+const GAZE_SENSITIVITY_X = 0.7;  // Horizontal sensitivity
+const GAZE_SENSITIVITY_Y = 1.2; // Higher vertical sensitivity
+const AMPLIFY_RIGHT = 15, AMPLIFY_LEFT = 8; // reversed
+const AMPLIFY_UP = 34, AMPLIFY_DOWN = 15;
 let baselineFrameCount = 0; // Count frames for baseline adjustment
 const BASELINE_MAX_FRAMES = 30; // Maximum frames to adjust baseline
 const BASELINE_UPDATE_THRESHOLD = 0.005;//ignore head movements that are too large to avoid adjusting the baseline too frequently
@@ -601,7 +601,7 @@ async function continueDetection(video, detector, canvas, cursor, gazeModel) {
         const dy = smoothedY * window.innerHeight * GAZE_SENSITIVITY_Y * -1;
         
       ///////////////////////FRO THE MODEL/////////////////////
-        const FUSION_WEIGHT = 0.5; // tune between 0 (ML only) to 1 (vector only)
+        const FUSION_WEIGHT = 1; // tune between 0 (ML only) to 1 (vector only)
         const fusedDx = FUSION_WEIGHT * dx + (1 - FUSION_WEIGHT) * modelDx;
         const fusedDy = FUSION_WEIGHT * dy + (1 - FUSION_WEIGHT) * modelDy;
       ////////////////////////////////////////////////////////
