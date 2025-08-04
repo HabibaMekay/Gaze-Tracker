@@ -46,24 +46,25 @@ fs.createReadStream('gaze_data.csv')
     .on('data', (row) => {
         const sw = parseFloat(row.screen_width);
         const sh = parseFloat(row.screen_height);
-        const gx = parseFloat(row.gaze_x);
-        const gy = parseFloat(row.gaze_y);
+        const tx = parseFloat(row.target_x);
+        const ty = parseFloat(row.target_y);
 
-        if (
-            row.left_iris_x && row.left_iris_y &&
-            row.right_iris_x && row.right_iris_y &&
-            gx >= 0 && gy >= 0 &&
-            sw > 0 && sh > 0
-        ) {
-            irisData.push([
-                parseFloat(row.left_iris_x),
-                parseFloat(row.left_iris_y),
-                parseFloat(row.right_iris_x),
-                parseFloat(row.right_iris_y)
-            ]);
-            gazeData.push([gx / sw, gy / sh]); // normalized
-            screenSizes.push([sw, sh]);
-        }
+    if (
+                row.left_iris_x && row.left_iris_y &&
+                row.right_iris_x && row.right_iris_y &&
+                tx >= 0 && ty >= 0 &&
+                sw > 0 && sh > 0
+            ) {
+                irisData.push([
+                    parseFloat(row.left_iris_x),
+                    parseFloat(row.left_iris_y),
+                    parseFloat(row.right_iris_x),
+                    parseFloat(row.right_iris_y)
+                ]);
+                gazeData.push([tx / sw, ty / sh]); // normalized
+                screenSizes.push([sw, sh]);
+            }
+
     })
     .on('end', async () => {
         console.log(`Loaded ${irisData.length} samples`);

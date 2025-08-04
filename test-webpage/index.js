@@ -601,20 +601,43 @@ async function continueDetection(video, detector, canvas, cursor, gazeModel) {
         const dy = smoothedY * window.innerHeight * GAZE_SENSITIVITY_Y * -1;
         
       ///////////////////////FRO THE MODEL/////////////////////
-        const FUSION_WEIGHT = 1; // tune between 0 (ML only) to 1 (vector only)
+        const FUSION_WEIGHT = 0; // tune between 0 (ML only) to 1 (vector only)
+
+        // the problem here that dx -> move 200 px from center while modelDx -> gives pixel 15200 on screen
+        // aka dx -> how far you should move (realtive offset), modelDx -> a postion on the screen(Absolute position)
+        // so we need to fuse them in a way that they are comparable
+        // because these are different units
+
+
+        const centerX = window.innerWidth / 2; // center of the screen
+        const centerY = window.innerHeight / 2;
+
+        // debugging the model 
+        console.log("ML Prediction:", { modelDx, modelDy });
+
+
+
+        // here we go first convert vector output(relative offset) to absolute coordinates
+        // that step FAILED lets do the opposite to see what will happen
+
+
+
+
+        // const modelDxRelative = modelDx - centerX
+        // const modelDyRelative = modelDy - centerY;
+
         const fusedDx = FUSION_WEIGHT * dx + (1 - FUSION_WEIGHT) * modelDx;
         const fusedDy = FUSION_WEIGHT * dy + (1 - FUSION_WEIGHT) * modelDy;
       ////////////////////////////////////////////////////////
 
         console.log('SmoothedX:', smoothedX.toFixed(3), 'SmoothedY:', smoothedY.toFixed(3));
 
-        const centerX = window.innerWidth / 2; // center of the screen
-        const centerY = window.innerHeight / 2;
+
         //////////////////////// FOR THE MODEL ///////////////////////
         // const rawX = centerX + dx - cursor.offsetWidth / 2; // takes the center of the screen and adds the gaze movement, then centers the cursor because the cursor is positioned at the top left corner
         // const rawY = centerY + dy - cursor.offsetHeight / 2;
         const rawX = centerX + fusedDx - cursor.offsetWidth / 2;
-        const rawY = centerY + fusedDy - cursor.offsetHeight / 2;
+        const rawY =   centerY+ fusedDy - cursor.offsetHeight / 2;
 ///////////////////////////////////////////////////////////////////////////////
         const maxX = window.innerWidth - cursor.offsetWidth / 2; //sunbtract half the cursor width so, the dot’s center is placed at the eye's target, not its corner
         const maxY = window.innerHeight - cursor.offsetHeight / 2;
