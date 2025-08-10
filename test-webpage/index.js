@@ -19,6 +19,12 @@ let errors = 0;
 let magnifier = null;
 let magnifierCtx = null;
 
+const SCROLL_ZONE_HEIGHT = 0.1; // 10% OF the screen height for scroll zones
+const MAX_SCROLL_SPEED = 5; // max scroll speed (when I increased it became shaky)
+const SCROLL_DWELL_THRESHOLD = 800; // Time in milliseconds to start scrolling after dwelling in a scroll zone
+const NEUTRAL_ZONE_HEIGHT = 0.8; // safe no scroll zone in the middle of the screen
+let scrollDwellStart = null;// start time for scrolling
+let scrollDirection = null;  // direction of scrolling
 
 navigator.mediaDevices.getUserMedia({ // increase the video resolution to improve gaze tracking accuracy
   video: { width: 1280, height: 720 },
@@ -319,7 +325,6 @@ async function loadmodel() {
 
     
 }
-
 
 
 
@@ -790,7 +795,49 @@ async function continueDetection(video, detector, canvas, cursor, gazeModel) {
                 dwellStartTime = null;
                 activeElement = null;
             }
-        }
+//////////////////////////////////////////////// scrollonly if not dwelling on an element/////////////////////////////////////////////////////////////////////
+            if (!activeElement) { // if no element is active, we can scroll
+                const cursorCenterY = clampedY + cursor.offsetHeight / 2;
+                const scrollZoneSize = window.innerHeight * SCROLL_ZONE_HEIGHT;
+                const neutralZoneStart = window.innerHeight * (0.5 - NEUTRAL_ZONE_HEIGHT / 2);
+                const neutralZoneEnd = window.innerHeight * (0.5 + NEUTRAL_ZONE_HEIGHT / 2);
+
+                let scrollSpeed = 0;
+                if (cursorCenterY < scrollZoneSize) {
+                    if (scrollDirection !== 'up') {
+                        scrollDwellStart = Date.now();
+                        scrollDirection = 'up';
+                    }
+                    const scrollDwellTime = Date.now() - scrollDwellStart;
+                    if (scrollDwellTime >= SCROLL_DWELL_THRESHOLD) {
+                        const depth = (scrollZoneSize - cursorCenterY) / scrollZoneSize;
+                        scrollSpeed = -MAX_SCROLL_SPEED * depth;
+                        window.scrollBy(0, scrollSpeed);
+                    }
+                } else if (cursorCenterY > window.innerHeight - scrollZoneSize) {
+                    if (scrollDirection !== 'down') {
+                        scrollDwellStart = Date.now();
+                        scrollDirection = 'down';
+                    }
+                    const scrollDwellTime = Date.now() - scrollDwellStart;
+                    if (scrollDwellTime >= SCROLL_DWELL_THRESHOLD) {//  if enough time has passed in the scroll zone
+                        const depth = (cursorCenterY - (window.innerHeight - scrollZoneSize)) / scrollZoneSize;
+                        scrollSpeed = MAX_SCROLL_SPEED * depth;
+                        window.scrollBy(0, scrollSpeed);
+                    }
+                } else if (cursorCenterY >= neutralZoneStart && cursorCenterY <= neutralZoneEnd) {
+                    scrollDwellStart = null;
+                    scrollDirection = null;
+                } else {
+                    scrollDwellStart = null;
+                    scrollDirection = null;
+                }
+            } else {
+                scrollDwellStart = null;
+                scrollDirection = null;
+            }
+        } 
+//////////////////////////////////////////////scroll end ///////////////////////////////////////////////////       
     } else {
         console.log('No face detected');
     }
@@ -831,8 +878,6 @@ function createCanvas(video) {
 
 
 }
-
-
 
     function createCursor() {
         const cursor = document.createElement('div');
