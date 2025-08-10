@@ -365,83 +365,175 @@ function drawCircleFrame(ctx, nosetip,leftEyeInnerCorner, rightEyeInnerCorner, c
 
 // Start detecting the face in the video stream
 //  canvas is implmented after this function dont be confused :)
-async function continueDetection(video, detector, canvas, cursor, gazeModel) {
-    const face = await detector.estimateFaces(video);
-    const ctx = canvas.getContext('2d');
-    //////////////////// FOR THE MODEL ///////////////////////
-    let modelDx = 0;
-    let modelDy = 0;
-    /////////////////////////////////////////////////////////
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear the canvas before drawing    
-
-    if (face.length > 0) {
-        if (face[0].faceInViewConfidence !== undefined && face[0].faceInViewConfidence < 0.99) {
-            console.warn("Low confidence — skipping frame"); // if confidence is low, skip the frame // maybe add a warning or make users refresh the page
-            requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor,gazeModel));
-            return;
+// function to check if iris shape is valid
+function isIrisShapeValid(iris) { //check if the iris shape is valid (circular enough) to get a relaible gaze direction
+    const distances = [];
+    for (let i = 0; i < iris.length; i++) {
+        for (let j = i + 1; j < iris.length; j++) {
+            const dx = iris[i].x - iris[j].x;
+            const dy = iris[i].y - iris[j].y;
+            distances.push(Math.sqrt(dx * dx + dy * dy));
         }
-        console.log('Face detected:', face[0]);
+    }
+    const maxDist = Math.max(...distances);// Get the maximum distance between any two points in the iris
+    const minDist = Math.min(...distances);
+    return (maxDist / minDist < 2.5); // Check if the ratio of max to min distance is within a threshold (2.5)
+}
 
-        const keypoints = face[0].keypoints; // Get the keypoints of the detected face
-// The model returns 478 (Keypoints) facial landmarks :
-// - Left eye iris landmarks: indices 468 to 472 (5 points)
-// - Right eye iris landmarks: indices 473 to 477 (5 points)
-// we are using them to estimate iris center or gaze direction
-         const rightIrisPoints = [keypoints[473], keypoints[474], keypoints[475], keypoints[476], keypoints[477]];// Right eye iris landmarks
-        const leftIrisPoints  = [keypoints[468], keypoints[469], keypoints[470], keypoints[471], keypoints[472]];// Left eye iris landmarks
+// function to draw iris centers on canvas
+function drawIrisCenters(ctx, leftEyeIris, rightEyeIris, canvas) {
+    // Mirror drawing to match video
+    ctx.save();
+    ctx.translate(canvas.width, 0);
+    ctx.scale(-1, 1);
 
-        function isIrisShapeValid(iris) { //check if the iris shape is valid (circular enough) to get a relaible gaze direction
-            const distances = [];
-            for (let i = 0; i < iris.length; i++) {
-                for (let j = i + 1; j < iris.length; j++) {
-                    const dx = iris[i].x - iris[j].x;
-                    const dy = iris[i].y - iris[j].y;
-                    distances.push(Math.sqrt(dx * dx + dy * dy));
-                }
-            }
-            const maxDist = Math.max(...distances);// Get the maximum distance between any two points in the iris
-            const minDist = Math.min(...distances);
-            return (maxDist / minDist < 2.5); // Check if the ratio of max to min distance is within a threshold (2.5)
+    [leftEyeIris, rightEyeIris].forEach(iris => {
+        ctx.beginPath();
+        ctx.arc(iris.x, iris.y, 5, 0, 2 * Math.PI); // draw a circle around the iris center
+        ctx.fillStyle = 'red';
+        ctx.fill();
+        ctx.closePath();
+    });
+    ctx.restore();
+}
+
+// function to calculate centers
+function calculateCenters(keypoints) {
+    // where eye is located, to measure if the eye is looking inward or outward aka left or right
+    const leftEyeInnerCorner = keypoints[133];
+    const leftEyeOuterCorner = keypoints[33];
+    const rightEyeInnerCorner = keypoints[362];
+    const rightEyeOuterCorner = keypoints[263];
+
+    // Pc = Pl_corner + Pr_corner
+    // Pl_corner and pr_corner stand for the located left eye inner corner and right eye inner corner
+    const cornerCenter = {
+        x: (leftEyeInnerCorner.x + rightEyeInnerCorner.x) / 2,
+        y: (leftEyeInnerCorner.y + rightEyeInnerCorner.y) / 2
+    };
+
+    // Iris centers: tells where the pupil is pointing
+    const leftEyeIris = keypoints[472]; // Left eye iris center
+    const rightEyeIris = keypoints[477]; // Right eye iris center
+
+    // PI = Pl_iris + Pr_iris
+    // Pl_iris and Pr_iris stand for the located left and right iris centers, respectively
+    const irisCenter = {
+        x: (leftEyeIris.x + rightEyeIris.x) / 2,
+        y: (leftEyeIris.y + rightEyeIris.y) / 2
+    };
+
+    return { cornerCenter, irisCenter, leftEyeInnerCorner, rightEyeInnerCorner, leftEyeIris, rightEyeIris };
+}
+
+// function to calculate gaze vector
+function calculateGazeVector(irisCenter, cornerCenter) {
+    // Vg = PI - Pc
+    // Vg is the gaze vector, which is the vector from the center of the eyes
+    return {
+        x: irisCenter.x - cornerCenter.x,
+        y: irisCenter.y - cornerCenter.y
+    };
+}
+
+// function to normalize gaze vector
+function normalizeGazeVector(gazeVector, keypoints) {
+    // here we are going to normalize to remove scale dependency (gaze estimation will be independent of face size and zoom)
+    // also to handle head movements, to make sure features are usable for mapping to screen coordinates
+    // analogy: to know where someone is pointing according to their height, a child vs an adult can point in the same direction but at different heights
+    const leftEyeInnerCorner = keypoints[133];
+    const rightEyeInnerCorner = keypoints[362];
+
+    // Vx = Vg.x / L -> L is the distance between eye corners
+    const L = calculateDistance(leftEyeInnerCorner, rightEyeInnerCorner);
+    const Vx = gazeVector.x / L; // Normalize the x component of the gaze vector
+
+    // Vy = Vg.y / H -> H is the nose bridge height
+    const noseBridge = keypoints[168];
+    const nosetip = keypoints[2];
+    const H = Math.max(0.001, calculateDistance(noseBridge, nosetip)); // Calculate the height of the nose bridge//how close the head is to the camera, to avoid division by zero
+    const Vy = gazeVector.y / H; // Normalize the y component of the gaze vector
+
+    return { Vx, Vy, L, H, noseBridge, nosetip };
+}
+
+// function to update baseline
+function updateBaseline(Vx, Vy) {
+    // first 30 frames are used to calculate the baseline
+    // This is to avoid adjusting the baseline too frequently, which can lead to instability
+    if (baselineFrameCount < BASELINE_MAX_FRAMES) {
+        // vertical baseline
+        if (baselineVy === null) baselineVy = Vy;
+        const deltaVy = Math.abs(Vy - baselineVy);
+        if (deltaVy < BASELINE_UPDATE_THRESHOLD) {
+            baselineVy = 0.9 * baselineVy + 0.1 * Vy;
         }
 
-        if (!isIrisShapeValid(rightIrisPoints) || !isIrisShapeValid(leftIrisPoints)) { //if eye is not circleish skip the frame
-            console.warn("Iris shape invalid — skipping frame");
-            requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor,gazeModel)); // Skip the frame if iris shape is not valid
-            return;
+        // horizontal baseline
+        if (baselineVx === null) baselineVx = Vx;
+        const deltaVx = Math.abs(Vx - baselineVx);
+        if (deltaVx < BASELINE_UPDATE_THRESHOLD) {
+            baselineVx = 0.9 * baselineVx + 0.1 * Vx;
         }
 
-// Iris centers: tells where the pupil is pionting
-        const rightEyeIris = keypoints[477]; // Right eye iris center
-        const leftEyeIris = keypoints[472]; // Left eye iris center
+        baselineFrameCount++; // increment once per frame
+    }
+}
 
-        if (isCollecting && currentCalibrationTarget) { // If we are collecting data and have a calibration target(red dot)
-        const timestamp = Date.now(); // Get the current timestamp
+// function to center and amplify gaze
+function centerAndAmplify(Vx, Vy) {
+    // screen's Y axis is 0 at the top and increases downwards // look down Vy-> increases and vice versa
+    const centeredVx = Vx - baselineVx;
+    const centeredVy = Vy - baselineVy;
 
-        const videoWidth = video.videoWidth; // Get the video width to normalize coordinates to 
-        const videoHeight = video.videoHeight; // Get the video height
+    const amplifiedVx = centeredVx < 0 ? centeredVx * AMPLIFY_LEFT : centeredVx * AMPLIFY_RIGHT;
+    const amplifiedVy = centeredVy < 0 ? centeredVy * AMPLIFY_UP : centeredVy * AMPLIFY_DOWN;
 
-        ////////////////////FOR THE MODEL/////////////////////
+    const normalizedGazeVector = {
+        x: -amplifiedVx,
+        y: -amplifiedVy // Invert x because the video is mirrored, y is inverted to match the screen coordinate system
+    };
 
-        const inputTensor = tf.tensor2d([[
+    return normalizedGazeVector;
+}
+
+// soft sigmoid function
+function softSigmoid(v, gain) { // Soft sigmoid function to map gaze values to screen movement // higher gain means less sensitivity, lower gain means more sensitivity
+    // maps -1…+1 to ~-1…+1 but flattens near 0
+    return v / (1 + Math.abs(v) * gain);
+}
+
+// function to get model prediction
+function getModelPrediction(leftEyeIris, rightEyeIris, video, gazeModel) {
+    // FOR THE MODEL
+    const videoWidth = video.videoWidth; // Get the video width to normalize coordinates to
+    const videoHeight = video.videoHeight; // Get the video height
+
+    const inputTensor = tf.tensor2d([[
         leftEyeIris.x / videoWidth,
         leftEyeIris.y / videoHeight,
         rightEyeIris.x / videoWidth,
         rightEyeIris.y / videoHeight
-        ]]);
+    ]]);
 
+    const prediction = gazeModel.predict(inputTensor);
+    const [predX, predY] = prediction.dataSync(); // These are in 0–1 normalized screen coordinates
+    inputTensor.dispose();
+    prediction.dispose();
 
-        const prediction = gazeModel.predict(inputTensor);
-        const [predX, predY] = prediction.dataSync(); // These are in 0–1 normalized screen coordinates
-        inputTensor.dispose();
-        prediction.dispose();
+    return {
+        modelDx: predX * window.innerWidth,
+        modelDy: predY * window.innerHeight
+    };
+}
 
-        modelDx = predX * window.innerWidth;
-        modelDy = predY * window.innerHeight;
-
-
-        //////////////////////////////////////////////////////
-        //////////////////////////////////////////////////////
+// function to collect calibration data
+function collectCalibrationData(leftEyeIris, rightEyeIris, video) {
+    // If we are collecting data and have a calibration target(red dot)
+    if (isCollecting && currentCalibrationTarget) {
+        const timestamp = Date.now(); // Get the current timestamp
+        const videoWidth = video.videoWidth; // Get the video width to normalize coordinates to
+        const videoHeight = video.videoHeight; // Get the video height
 
         const sample = {
             timestamp,
@@ -451,91 +543,266 @@ async function continueDetection(video, detector, canvas, cursor, gazeModel) {
             right_iris_y: (rightEyeIris.y / videoHeight).toFixed(5),
             gaze_x: currentCalibrationTarget.x.toFixed(0),
             gaze_y: currentCalibrationTarget.y.toFixed(0),
-            screen_width: window.innerWidth,   
-            screen_height: window.innerHeight, 
-
-            target_x: currentCalibrationTarget.x,   
-            target_y: currentCalibrationTarget.y    
+            screen_width: window.innerWidth,
+            screen_height: window.innerHeight,
+            target_x: currentCalibrationTarget.x,
+            target_y: currentCalibrationTarget.y
         };
-
 
         collectedData.push(sample); // Add the sample to the collected data array
+    }
+}
+
+// function to fuse vector and model outputs
+function fuseOutputs(dx, dy, modelDx, modelDy) {
+    // FOR THE MODEL
+    const FUSION_WEIGHT = 1; // tune between 0 (ML only) to 1 (vector only)
+    // the problem here that dx -> move 200 px from center while modelDx -> gives pixel 15200 on screen
+    // aka dx -> how far you should move (relative offset), modelDx -> a position on the screen(Absolute position)
+    // so we need to fuse them in a way that they are comparable
+    // because these are different units
+    const centerX = window.innerWidth / 2; // center of the screen
+    const centerY = window.innerHeight / 2;
+
+    const fusedDx = FUSION_WEIGHT * dx + (1 - FUSION_WEIGHT) * modelDx;
+    const fusedDy = FUSION_WEIGHT * dy + (1 - FUSION_WEIGHT) * modelDy;
+
+    return { fusedDx, fusedDy };
+}
+
+// function to position cursor
+function positionCursor(fusedDx, fusedDy, cursor) {
+    const centerX = window.innerWidth / 2; // center of the screen
+    const centerY = window.innerHeight / 2;
+
+    const rawX = centerX + fusedDx - cursor.offsetWidth / 2; // takes the center of the screen and adds the gaze movement, then centers the cursor because the cursor is positioned at the top left corner
+    const rawY = centerY + fusedDy - cursor.offsetHeight / 2;
+
+    const maxX = window.innerWidth - cursor.offsetWidth / 2; // subtract half the cursor width so, the dot’s center is placed at the eye's target, not its corner
+    const maxY = window.innerHeight - cursor.offsetHeight / 2;
+    const minX = 0 - cursor.offsetWidth / 2; // to make sure the cursor does not go off screen
+    const minY = 0 - cursor.offsetHeight / 2;
+    const clampedX = Math.min(Math.max(rawX, minX), maxX); // clamps the x coordinate to be within the screen bounds
+    const clampedY = Math.min(Math.max(rawY, minY), maxY); // if too high or too low, it will be set to the max or min value
+
+    cursor.style.left = `${clampedX}px`; // takes the clamped x and y coordinates and sets the cursor position
+    cursor.style.top = `${clampedY}px`;
+
+    return { clampedX, clampedY };
+}
+
+// function to handle interactions (dwell, click, scroll)
+function handleInteractions(clampedX, clampedY, cursor) {
+    // Only interact when not calibrating
+    if (isCollecting) return;
+
+    const candidates = ContextualScore(clampedX, clampedY);
+    highlightCandidates(candidates);
+
+    let closestElement = null;
+    let closestDistance = Infinity;
+
+    if (candidates.length > 0) {
+        closestElement = candidates[0].element;
+        closestDistance = candidates[0].distance;
+    }
+
+    if (closestElement && closestDistance < 120
+
+) {
+        const tag = closestElement.tagName.toLowerCase();
+        if (activeElement === closestElement) {
+            const dwellTime = Date.now() - dwellStartTime;
+            console.log(`Dwell progress: ${dwellTime}`);
+            if (dwellTime >= dwellThreshold) {
+                console.log(`Dwell progress REACHED`);
+                taskCompletions++;
+                if (tag === "button" || closestElement.getAttribute("role") === "button") {
+                    console.log("Button clicked via gaze");
+                    closestElement.click();
+                } else if (tag === "input" || tag === "textarea" || closestElement.getAttribute("role") === "textbox") {
+                    console.log("Text input focused via gaze");
+                    closestElement.focus();
+                    showVirtualKeyboard(closestElement);
+                } else if (tag === "a" || closestElement.getAttribute("role") === "link") {
+                    console.log("Link clicked via gaze");
+                    closestElement.click();
+                } else if (closestElement.classList.contains('virtual-key')) {
+                    console.log("Virtual key clicked via gaze");
+                    closestElement.click();
+                }
+                dwellStartTime = null;
+                activeElement = null;
+            }
+        } else {
+            activeElement = closestElement;
+            dwellStartTime = Date.now();
         }
+    } else {
+        if (closestDistance > 120) errors++;
+        dwellStartTime = null;
+        activeElement = null;
+    }
 
+    // scroll only if not dwelling on an element
+    if (!activeElement) { // if no element is active, we can scroll
+        const cursorCenterY = clampedY + cursor.offsetHeight / 2;
+        const scrollZoneSize = window.innerHeight * SCROLL_ZONE_HEIGHT;
+        const neutralZoneStart = window.innerHeight * (0.5 - NEUTRAL_ZONE_HEIGHT / 2);
+        const neutralZoneEnd = window.innerHeight * (0.5 + NEUTRAL_ZONE_HEIGHT / 2);
 
- // where eye is located, to measure if the eye is looking inward or outward aka left or right
-        const leftEyeInnerCorner = keypoints[133]; 
-        const leftEyeOuterCorner = keypoints[33];
-
-        const rightEyeInnerCorner = keypoints[362]; 
-        const rightEyeOuterCorner = keypoints[263];
-
-
-        // Mirror drawing to match video
-        ctx.save();
-        ctx.translate(canvas.width, 0);
-        ctx.scale(-1, 1);
-
-        [leftEyeIris, rightEyeIris].forEach(iris => {
-           ctx.beginPath();
-           ctx.arc(iris.x, iris.y, 5,  0, 2 * Math.PI); // draw a circle around the iris center
-           ctx.fillStyle = 'red'; 
-           ctx.fill();
-           ctx.closePath();
-        }); 
-        ctx.restore();
-
-        // Pc =Pl_corner + Pr_corner
-        // Pl_corner and pr_corner stand for the located left eye inner corner and right eye inner corner
-        const cornerCenter ={
-            x:(leftEyeInnerCorner.x + rightEyeInnerCorner.x )/2,
-            y:(leftEyeInnerCorner.y + rightEyeInnerCorner.y )/2
+        let scrollSpeed = 0;
+        if (cursorCenterY < scrollZoneSize) {
+            if (scrollDirection !== 'up') {
+                scrollDwellStart = Date.now();
+                scrollDirection = 'up';
+            }
+            const scrollDwellTime = Date.now() - scrollDwellStart;
+            if (scrollDwellTime >= SCROLL_DWELL_THRESHOLD) { // if enough time has passed in the scroll zone(pass)
+                const depth = (scrollZoneSize - cursorCenterY) / scrollZoneSize;
+                scrollSpeed = -MAX_SCROLL_SPEED * depth;
+                window.scrollBy(0, scrollSpeed);
+            }
+        } else if (cursorCenterY > window.innerHeight - scrollZoneSize) {
+            if (scrollDirection !== 'down') {
+                scrollDwellStart = Date.now();
+                scrollDirection = 'down';
+            }
+            const scrollDwellTime = Date.now() - scrollDwellStart;
+            if (scrollDwellTime >= SCROLL_DWELL_THRESHOLD) { // if enough time has passed in the scroll zone
+                const depth = (cursorCenterY - (window.innerHeight - scrollZoneSize)) / scrollZoneSize;
+                scrollSpeed = MAX_SCROLL_SPEED * depth;
+                window.scrollBy(0, scrollSpeed);
+            }
+        } else if (cursorCenterY >= neutralZoneStart && cursorCenterY <= neutralZoneEnd) {
+            scrollDwellStart = null;
+            scrollDirection = null;
+        } else {
+            scrollDwellStart = null;
+            scrollDirection = null;
         }
+    } else {
+        scrollDwellStart = null;
+        scrollDirection = null;
+    }
+}
 
-        //PI = Pl_iris + Pr_iris
-        // Pl_iris and Pr_iris stand for the located left and right iris centers, respectively
-        const irisCenter = {
-            x: (leftEyeIris.x + rightEyeIris.x) / 2,
-            y: (leftEyeIris.y + rightEyeIris.y) / 2
-        };
+// Function to handle magnifier
+async function updateMagnifier(magnifier, magnifierCtx, clampedX, clampedY, cursor) {
+    try {
+        const zoomFactor = 2;
+        const captureSize = 100; // Area to capture (will be zoomed 2x)
 
-        //Vg = PI -Pc
-        // Vg is the gaze vector, which is the vector from the center of the eyes
-        const gazeVector = {
-            x: irisCenter.x - cornerCenter.x,      
-            y: irisCenter.y - cornerCenter.y
-        };
+        // Get cursor center position
+        const cursorCenterX = clampedX + cursor.offsetWidth / 2;
+        const cursorCenterY = clampedY + cursor.offsetHeight / 2;
 
-        // here we are going to normalize to remove scale dependency (gaze estimation will be independent of face size and zoom)
-        // also to handle head movements, to make sure features are usable for mapping to screen coordinates
-        //analogy: to know where someone is pionting according to thier hieght, a child vs an adult can piont in the same direction but at different heights
-        
-        // Vx = Vg.x /L -> L is the distnace between eye corners
-        const L = calculateDistance(leftEyeInnerCorner, rightEyeInnerCorner); 
-        const Vx = gazeVector.x / L; // Normalize the x component of the gaze vector
+        // Position magnifier near cursor
+        magnifier.style.left = `${cursorCenterX + 20}px`;
+        magnifier.style.top = `${cursorCenterY - magnifier.height - 20}px`;
 
-        // Vy = Vg.y /H -> H is the nose bridge height
-        const noseBridge= keypoints[168];
-        const nosetip = keypoints[2];
+        // Create temporary canvas for capture
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = captureSize;
+        tempCanvas.height = captureSize;
+        const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
 
-        // For the head frame//////////////////////////////////////////////
-        const isInsideHeadFrame = drawCircleFrame(
-        ctx,
-        nosetip,
-        leftEyeInnerCorner,
-        rightEyeInnerCorner,
-        canvas
+        // Fill with white background first
+        tempCtx.fillStyle = 'white';
+        tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+
+        // Capture screen area - we need to use html2canvas for proper capturing
+        await new Promise(resolve => {
+            html2canvas(document.body, {
+                x: cursorCenterX - captureSize / 2,
+                y: cursorCenterY - captureSize / 2,
+                width: captureSize,
+                height: captureSize,
+                scale: 1,
+                logging: false,
+                useCORS: true,
+                onclone: (clonedDoc) => {
+                    // Hide the magnifier in the clone to avoid recursion
+                    const clonedMagnifier = clonedDoc.querySelector('canvas[style*="fixed"]');
+                    if (clonedMagnifier) clonedMagnifier.style.display = 'none';
+                }
+            }).then(canvas => {
+                tempCtx.drawImage(canvas, 0, 0, captureSize, captureSize);
+                resolve();
+            });
+        });
+
+        // Draw to magnifier
+        magnifierCtx.clearRect(0, 0, magnifier.width, magnifier.height);
+        magnifierCtx.drawImage(
+            tempCanvas,
+            0, 0, captureSize, captureSize,
+            0, 0, magnifier.width, magnifier.height
         );
-                if (!isInsideHeadFrame) { // If the nose tip is outside the head frame, skip the frame
-                    console.warn("Nose tip outside head frame — skipping frame");   
-                    requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor,gazeModel));
-                    return;} // Skip the frame if the nose tip is outside the head frame
-        // End of head frame////////////////////////////////////////////////
 
-        const H = Math.max(0.001, calculateDistance(noseBridge, nosetip)); // Calculate the height of the nose bridge//how close the head is to the camera, to avoid division by zero
-        const Vy = gazeVector.y / H; // Normalize the y component of the gaze vector
+        // Add crosshair
+        magnifierCtx.strokeStyle = 'red';
+        magnifierCtx.lineWidth = 2;
+        magnifierCtx.beginPath();
+        magnifierCtx.moveTo(magnifier.width / 2, 0);
+        magnifierCtx.lineTo(magnifier.width / 2, magnifier.height);
+        magnifierCtx.moveTo(0, magnifier.height / 2);
+        magnifierCtx.lineTo(magnifier.width, magnifier.height / 2);
+        magnifierCtx.stroke();
+    } catch (e) {
+        console.warn("Magnifier error:", e);
+    }
+}
 
-       // Debugiing////////////////////////////////////////////////////
+// Main async function refactored with original comments
+async function continueDetection(video, detector, canvas, cursor, gazeModel) {
+    const face = await detector.estimateFaces(video);
+    const ctx = canvas.getContext('2d');
+    //////////////////// FOR THE MODEL ///////////////////////
+    let modelDx = 0;
+    let modelDy = 0;
+    /////////////////////////////////////////////////////////
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear the canvas before drawing
+
+    if (face.length > 0) {
+        if (face[0].faceInViewConfidence !== undefined && face[0].faceInViewConfidence < 0.99) {
+            console.warn("Low confidence — skipping frame"); // if confidence is low, skip the frame // maybe add a warning or make users refresh the page
+            requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor, gazeModel));
+            return;
+        }
+        console.log('Face detected:', face[0]);
+
+        const keypoints = face[0].keypoints; // Get the keypoints of the detected face
+        // The model returns 478 (Keypoints) facial landmarks :
+        // - Left eye iris landmarks: indices 468 to 472 (5 points)
+        // - Right eye iris landmarks: indices 473 to 477 (5 points)
+        // we are using them to estimate iris center or gaze direction
+        const rightIrisPoints = [keypoints[473], keypoints[474], keypoints[475], keypoints[476], keypoints[477]]; // Right eye iris landmarks
+        const leftIrisPoints = [keypoints[468], keypoints[469], keypoints[470], keypoints[471], keypoints[472]]; // Left eye iris landmarks
+
+        if (!isIrisShapeValid(rightIrisPoints) || !isIrisShapeValid(leftIrisPoints)) { // if eye is not circleish skip the frame
+            console.warn("Iris shape invalid — skipping frame");
+            requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor, gazeModel)); // Skip the frame if iris shape is not valid
+            return;
+        }
+
+        const { cornerCenter, irisCenter, leftEyeInnerCorner, rightEyeInnerCorner, leftEyeIris, rightEyeIris } = calculateCenters(keypoints);
+
+        drawIrisCenters(ctx, leftEyeIris, rightEyeIris, canvas);
+
+        const gazeVector = calculateGazeVector(irisCenter, cornerCenter);
+        const { Vx, Vy, L, H, noseBridge, nosetip } = normalizeGazeVector(gazeVector, keypoints);
+
+        // For the head frame
+        const isInsideHeadFrame = drawCircleFrame(ctx, nosetip, leftEyeInnerCorner, rightEyeInnerCorner, canvas);
+        if (!isInsideHeadFrame) { // If the nose tip is outside the head frame, skip the frame
+            console.warn("Nose tip outside head frame — skipping frame");
+            requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor, gazeModel));
+            return;
+        } // End of head frame
+
+        // Debugging
         console.log('Left Eye Iris:', leftEyeIris);
         console.log('Right Eye Iris:', rightEyeIris);
         console.log('Left Eye Corner:', leftEyeInnerCorner);
@@ -546,303 +813,51 @@ async function continueDetection(video, detector, canvas, cursor, gazeModel) {
         console.log('Eye corner distance L:', L.toFixed(3));
         console.log('Nose bridge height H:', H.toFixed(3));
         console.log('Normalized Vx:', Vx.toFixed(3), 'Normalized Vy:', Vy.toFixed(3));
-    /////////////////////////////////////////////////////////////////////
 
-      // THE FINAL NORMALIZED GAZE VECTOR///////////////
-    if (baselineFrameCount < BASELINE_MAX_FRAMES) {        // first 30 frames are used to calculate the baseline
-      // This is to avoid adjusting the baseline too frequently, which can lead to instability
+        updateBaseline(Vx, Vy);
 
-      // vertical baseline //
-      if (baselineVy === null) baselineVy = Vy;          
-      const deltaVy = Math.abs(Vy - baselineVy);
-      if (deltaVy < BASELINE_UPDATE_THRESHOLD) {
-        baselineVy = 0.9 * baselineVy + 0.1 * Vy;          
-      }
+        const normalizedGazeVector = centerAndAmplify(Vx, Vy);
+        console.log('Normalized Gaze Vector:', normalizedGazeVector);
 
-      // horizontl baseline //
-      if (baselineVx === null) baselineVx = Vx;
-      const deltaVx = Math.abs(Vx - baselineVx);
-      if (deltaVx < BASELINE_UPDATE_THRESHOLD) {
-        baselineVx = 0.9 * baselineVx + 0.1 * Vx;
-      }
-
-      baselineFrameCount++;                                //  increment once per frame
-    } 
-
-          /// screen's Y axis is 0 at the top and increases downwards ////// look down Vy-> increases and vice versa
-          // const centeredVx = Vx - baselineVx;
-        // const centeredVy =   Vy- baselineVy ; // subtract baslineVy so look straight is 0 
-        // const normalizedGazeVector = {                                      
-        //         x: -centeredVx,  
-        //         y:  - centeredVy // Invert x becuase the video is mirrored, y is inverted to match the screen coordinate system
-        //  }; 
-        const centeredVx = (Vx - baselineVx) ;
-        const centeredVy = (Vy - baselineVy) ;
-
-        const amplifiedVx = centeredVx < 0 ? centeredVx * AMPLIFY_LEFT : centeredVx * AMPLIFY_RIGHT;
-        const amplifiedVy = centeredVy < 0 ? centeredVy * AMPLIFY_UP : centeredVy * AMPLIFY_DOWN;
-
-        const normalizedGazeVector = {
-        x: -amplifiedVx,
-        y: -amplifiedVy 
-        };
-        console.log('Centered Vy (Vy - baselineVy):', centeredVy.toFixed(3));
-
-
-         console.log('Normalized Gaze Vector:', normalizedGazeVector);
-        
+        // Here we start to convert gaze to screen movement
         const MAX_PIXELS_X = window.innerWidth; // set the maximum pixels to the window width
         const MAX_PIXELS_Y = window.innerHeight; // set the maximum pixels to the window height
         console.log('Vx:', Vx.toFixed(3), 'Vy:', Vy.toFixed(3));
-     
-        
 
-        // smoothedX = smoothedX * (1 - SMOOTHING) + normalizedGazeVector.x * SMOOTHING; //makes the dot glide smoothly using old and new values
-
-        // smoothedY =  smoothedY * (1 - SMOOTHING) + normalizedGazeVector.y * SMOOTHING; //1- smoothing means how much of the old value we want to keep, 0.1 means we keep 10% of the old value and 90% of the new value
-        
-
-
-
-       ////////////////////////////////////////////////////////////////////////////
-       // Here we start to convert gaze to scren movemnet 
-       function softSigmoid(v, gain ){ // Soft sigmoid function to map gaze values to screen movement // higher gain means less sensitivity, lower gain means more sensitivity
-        // maps -1…+1 to ~-1…+1 but flattens near 0 
-        return v / (1 + Math.abs(v)*gain);
-      }
-
-    //   const dx = softSigmoid(smoothedX ,0.1) * window.innerWidth  * GAZE_SENSITIVITY_X;
-    //   const dy = softSigmoid(smoothedY,0.1) * window.innerHeight * GAZE_SENSITIVITY_Y * -1; // Invert dy to match screen coordinates, where down is positive
-       
-    //   const dx = smoothedX * window.innerWidth  * GAZE_SENSITIVITY_X;
-    //   const dy = smoothedY * window.innerHeight * GAZE_SENSITIVITY_Y * -1; // Invert dy to match screen coordinates, where down is positive
-
-        
-        /// UNCOMMENT WHEN READY TO BE INTEGRATED///////////
-        //////////////////// FOR THE TEMPORAL FILTERING//////////////////////
-        //REMOVE THE PREVOIUS 4 SMOOTHED LINES AS THE FOLLOWING  IS THE INTEGRATION OF THEM WITH THE SLIDING WINDOWS
+        // FOR THE TEMPORAL FILTERING
         const temporallySmoothed = temporalFilter(normalizedGazeVector.x, normalizedGazeVector.y);
         const smoothedX = temporallySmoothed.x;
         const smoothedY = temporallySmoothed.y;
-        const dx = smoothedX * window.innerWidth * GAZE_SENSITIVITY_X;
-        const dy = smoothedY * window.innerHeight * GAZE_SENSITIVITY_Y * -1;
-        
-      ///////////////////////FRO THE MODEL/////////////////////
-        const FUSION_WEIGHT = 1; // tune between 0 (ML only) to 1 (vector only)
+        let dx = smoothedX * window.innerWidth * GAZE_SENSITIVITY_X;
+        let dy = smoothedY * window.innerHeight * GAZE_SENSITIVITY_Y * -1; // Invert dy to match screen coordinates, where down is positive
 
-        // the problem here that dx -> move 200 px from center while modelDx -> gives pixel 15200 on screen
-        // aka dx -> how far you should move (realtive offset), modelDx -> a postion on the screen(Absolute position)
-        // so we need to fuse them in a way that they are comparable
-        // because these are different units
+        collectCalibrationData(leftEyeIris, rightEyeIris, video);
 
-
-        const centerX = window.innerWidth / 2; // center of the screen
-        const centerY = window.innerHeight / 2;
-
-        // debugging the model 
+        const { modelDx: predModelDx, modelDy: predModelDy } = getModelPrediction(leftEyeIris, rightEyeIris, video, gazeModel);
+        modelDx = predModelDx;
+        modelDy = predModelDy;
+        // debugging the model
         console.log("ML Prediction:", { modelDx, modelDy });
 
-
-
-        // here we go first convert vector output(relative offset) to absolute coordinates
-        // that step FAILED lets do the opposite to see what will happen
-
-
-
-
-        // const modelDxRelative = modelDx - centerX
-        // const modelDyRelative = modelDy - centerY;
-
-        const fusedDx = FUSION_WEIGHT * dx + (1 - FUSION_WEIGHT) * modelDx;
-        const fusedDy = FUSION_WEIGHT * dy + (1 - FUSION_WEIGHT) * modelDy;
-      ////////////////////////////////////////////////////////
+        const { fusedDx, fusedDy } = fuseOutputs(dx, dy, modelDx, modelDy);
 
         console.log('SmoothedX:', smoothedX.toFixed(3), 'SmoothedY:', smoothedY.toFixed(3));
 
+        const { clampedX, clampedY } = positionCursor(fusedDx, fusedDy, cursor);
 
-        //////////////////////// FOR THE MODEL ///////////////////////
-        // const rawX = centerX + dx - cursor.offsetWidth / 2; // takes the center of the screen and adds the gaze movement, then centers the cursor because the cursor is positioned at the top left corner
-        // const rawY = centerY + dy - cursor.offsetHeight / 2;
-        const rawX = centerX + fusedDx - cursor.offsetWidth / 2;
-        const rawY =   centerY+ fusedDy - cursor.offsetHeight / 2;
-///////////////////////////////////////////////////////////////////////////////
-        const maxX = window.innerWidth - cursor.offsetWidth / 2; //sunbtract half the cursor width so, the dot’s center is placed at the eye's target, not its corner
-        const maxY = window.innerHeight - cursor.offsetHeight / 2;
-        const minX = 0 - cursor.offsetWidth / 2;// to make sure the cursor does not go off screen
-        const minY = 0 - cursor.offsetHeight / 2;
-        const clampedX = Math.min(Math.max(rawX, minX), maxX);// clamps the x coordinate to be within the screen bounds
-        const clampedY = Math.min(Math.max(rawY, minY), maxY); // if too high or too low, it will be set to the max or min value
-        cursor.style.left = `${clampedX}px`; //takes the clamped x and y coordinates and sets the cursor position
-        cursor.style.top = `${clampedY}px`;
-        
         console.log('dx (pixels):', dx.toFixed(1), 'dy (pixels):', dy.toFixed(1));
         console.log('Cursor screen position:', { x: clampedX.toFixed(1), y: clampedY.toFixed(1) });
 
-// if (magnifier && magnifierCtx) {
-//     try {
-//         const zoomFactor = 2;
-//         const captureSize = 100; // Area to capture (will be zoomed 2x)
-        
-//         // Get cursor center position
-//         const cursorCenterX = clampedX + cursor.offsetWidth / 2;
-//         const cursorCenterY = clampedY + cursor.offsetHeight / 2;
-        
-//         // Position magnifier near cursor
-//         magnifier.style.left = `${cursorCenterX + 20}px`;
-//         magnifier.style.top = `${cursorCenterY - magnifier.height - 20}px`;
-        
-//         // Create temporary canvas for capture
-//         const tempCanvas = document.createElement('canvas');
-//         tempCanvas.width = captureSize;
-//         tempCanvas.height = captureSize;
-//         const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
-        
-//         // Fill with white background first
-//         tempCtx.fillStyle = 'white';
-//         tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-        
-//         // Capture screen area - we need to use html2canvas for proper capturing
-//         await new Promise(resolve => {
-//             html2canvas(document.body, {
-//                 x: cursorCenterX - captureSize/2,
-//                 y: cursorCenterY - captureSize/2,
-//                 width: captureSize,
-//                 height: captureSize,
-//                 scale: 1,
-//                 logging: false,
-//                 useCORS: true,
-//                 onclone: (clonedDoc) => {
-//                     // Hide the magnifier in the clone to avoid recursion
-//                     const clonedMagnifier = clonedDoc.querySelector('canvas[style*="fixed"]');
-//                     if (clonedMagnifier) clonedMagnifier.style.display = 'none';
-//                 }
-//             }).then(canvas => {
-//                 tempCtx.drawImage(canvas, 0, 0, captureSize, captureSize);
-//                 resolve();
-//             });
-//         });
-        
-//         // Draw to magnifier
-//         magnifierCtx.clearRect(0, 0, magnifier.width, magnifier.height);
-//         magnifierCtx.drawImage(
-//             tempCanvas,
-//             0, 0, captureSize, captureSize,
-//             0, 0, magnifier.width, magnifier.height
-//         );
-        
-//         // Add crosshair
-//         magnifierCtx.strokeStyle = 'red';
-//         magnifierCtx.lineWidth = 2;
-//         magnifierCtx.beginPath();
-//         magnifierCtx.moveTo(magnifier.width/2, 0);
-//         magnifierCtx.lineTo(magnifier.width/2, magnifier.height);
-//         magnifierCtx.moveTo(0, magnifier.height/2);
-//         magnifierCtx.lineTo(magnifier.width, magnifier.height/2);
-//         magnifierCtx.stroke();
-        
-//     } catch (e) {
-//         console.warn("Magnifier error:", e);
-//     }
-// }
-        heatCtx.beginPath();
-        heatCtx.arc(clampedX + 5, clampedY + 5, 3, 0, 2 * Math.PI);
-        heatCtx.fillStyle = 'rgba(255, 0, 0, 0.1)';   
-        heatCtx.fill();
-      
-        if (!isCollecting) { // Only interact when not calibrating
-            const candidates = ContextualScore(clampedX, clampedY);
-            highlightCandidates(candidates);
+       
 
-            let closestElement = null;
-            let closestDistance = Infinity;
-
-            if (candidates.length > 0) {
-                closestElement = candidates[0].element;
-                closestDistance = candidates[0].distance;
-            }
-
-            if (closestElement && closestDistance < 120) {
-                const tag = closestElement.tagName.toLowerCase();
-                if (activeElement === closestElement) {
-                    const dwellTime = Date.now() - dwellStartTime;
-                    console.log(`Dwell progress: ${dwellTime}`);
-                    if (dwellTime >= dwellThreshold) {
-                        console.log(`Dwell progress REACHED`);
-                        taskCompletions++;
-                        if (tag === "button" || closestElement.getAttribute("role") === "button") {
-                            console.log("Button clicked via gaze");
-                            closestElement.click();
-                        } else if (tag === "input" || tag === "textarea" || closestElement.getAttribute("role") === "textbox") {
-                            console.log("Text input focused via gaze");
-                            closestElement.focus();
-                            showVirtualKeyboard(closestElement);
-                        } else if (tag === "a" || closestElement.getAttribute("role") === "link") {
-                            console.log("Link clicked via gaze");
-                            closestElement.click();
-                        } else if (closestElement.classList.contains('virtual-key')) {
-                            console.log("Virtual key clicked via gaze");
-                            closestElement.click();
-                        }
-                        dwellStartTime = null;
-                        activeElement = null;
-                    }
-                } else {
-                    activeElement = closestElement;
-                    dwellStartTime = Date.now();
-                }
-            } else {
-                if (closestDistance > 120) errors++;
-                dwellStartTime = null;
-                activeElement = null;
-            }
-//////////////////////////////////////////////// scrollonly if not dwelling on an element/////////////////////////////////////////////////////////////////////
-            if (!activeElement) { // if no element is active, we can scroll
-                const cursorCenterY = clampedY + cursor.offsetHeight / 2;
-                const scrollZoneSize = window.innerHeight * SCROLL_ZONE_HEIGHT;
-                const neutralZoneStart = window.innerHeight * (0.5 - NEUTRAL_ZONE_HEIGHT / 2);
-                const neutralZoneEnd = window.innerHeight * (0.5 + NEUTRAL_ZONE_HEIGHT / 2);
-
-                let scrollSpeed = 0;
-                if (cursorCenterY < scrollZoneSize) {
-                    if (scrollDirection !== 'up') {
-                        scrollDwellStart = Date.now();
-                        scrollDirection = 'up';
-                    }
-                    const scrollDwellTime = Date.now() - scrollDwellStart;
-                    if (scrollDwellTime >= SCROLL_DWELL_THRESHOLD) {
-                        const depth = (scrollZoneSize - cursorCenterY) / scrollZoneSize;
-                        scrollSpeed = -MAX_SCROLL_SPEED * depth;
-                        window.scrollBy(0, scrollSpeed);
-                    }
-                } else if (cursorCenterY > window.innerHeight - scrollZoneSize) {
-                    if (scrollDirection !== 'down') {
-                        scrollDwellStart = Date.now();
-                        scrollDirection = 'down';
-                    }
-                    const scrollDwellTime = Date.now() - scrollDwellStart;
-                    if (scrollDwellTime >= SCROLL_DWELL_THRESHOLD) {//  if enough time has passed in the scroll zone
-                        const depth = (cursorCenterY - (window.innerHeight - scrollZoneSize)) / scrollZoneSize;
-                        scrollSpeed = MAX_SCROLL_SPEED * depth;
-                        window.scrollBy(0, scrollSpeed);
-                    }
-                } else if (cursorCenterY >= neutralZoneStart && cursorCenterY <= neutralZoneEnd) {
-                    scrollDwellStart = null;
-                    scrollDirection = null;
-                } else {
-                    scrollDwellStart = null;
-                    scrollDirection = null;
-                }
-            } else {
-                scrollDwellStart = null;
-                scrollDirection = null;
-            }
-        } 
-//////////////////////////////////////////////scroll end ///////////////////////////////////////////////////       
+        handleInteractions(clampedX, clampedY, cursor);
     } else {
         console.log('No face detected');
     }
-    requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor, gazeModel));  // Call the function again for continuous detection
+
+    requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor, gazeModel)); // Call the function again for continuous detection
 }
+
 
 // Euclidean distnace
 function calculateDistance(pointA, pointB) {
