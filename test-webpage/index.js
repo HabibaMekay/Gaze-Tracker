@@ -157,6 +157,25 @@ function showVirtualKeyboard(targetInput) {
     keyboard.style.zIndex = '1000';
     keyboard.style.boxShadow = '0 0 10px rgba(0,0,0,0.3)';
     keyboard.style.borderRadius = '10px';
+    keyboard.style.width = '800px';
+
+    const topBar = document.createElement('div');
+    topBar.style.display = 'flex';
+    topBar.style.justifyContent = 'flex-end';
+    topBar.style.marginBottom = '15px';
+
+
+    const closeButton = document.createElement('button');
+    closeButton.textContent = 'Close';
+    closeButton.style.padding = '12px 24px';
+    closeButton.style.fontSize = '20px';
+    closeButton.style.borderRadius = '6px';
+    closeButton.style.top = '8px';
+    closeButton.style.right = '5px';
+    closeButton.style.cursor = 'pointer';
+    closeButton.addEventListener('click', () => keyboard.remove());
+    keyboard.appendChild(closeButton);
+    keyboard.appendChild(topBar);
 
     const rows = [
         ['1','2','3','4','5','6','7','8','9','0','←'],
@@ -171,25 +190,28 @@ function showVirtualKeyboard(targetInput) {
     rows.forEach((row, rowIndex) => {
         const rowDiv = document.createElement('div');
         rowDiv.style.display = 'flex';
-        rowDiv.style.justifyContent = 'center';
-        rowDiv.style.marginBottom = '5px';
+        rowDiv.style.justifyContent = 'space-between';
+        rowDiv.style.marginBottom = '20px';
 
         row.forEach(key => {
             const btn = document.createElement('button');
             const isLetter = /^[A-Z]$/.test(key);
 
             if (key === 'Space') {
-                btn.textContent = '____';
+                btn.textContent = '____________________';
+                btn.style.flex = '4';  
+
             } else if (isLetter) {
                 btn.textContent = isUppercase ? key : key.toLowerCase();
             } else {
                 btn.textContent = key;
+                
             }
 
             btn.classList.add("virtual-key");
             btn.style.padding = key === 'Space' ? '10px 80px' : '10px 14px';
             btn.style.margin = '3px';
-            btn.style.fontSize = '16px';
+            btn.style.fontSize = '25px';
             btn.style.cursor = 'pointer';
             btn.style.border = '1px solid #888';
             btn.style.borderRadius = '6px';
@@ -601,7 +623,7 @@ async function continueDetection(video, detector, canvas, cursor, gazeModel) {
         const dy = smoothedY * window.innerHeight * GAZE_SENSITIVITY_Y * -1;
         
       ///////////////////////FRO THE MODEL/////////////////////
-        const FUSION_WEIGHT = 0; // tune between 0 (ML only) to 1 (vector only)
+        const FUSION_WEIGHT = 1; // tune between 0 (ML only) to 1 (vector only)
 
         // the problem here that dx -> move 200 px from center while modelDx -> gives pixel 15200 on screen
         // aka dx -> how far you should move (realtive offset), modelDx -> a postion on the screen(Absolute position)
