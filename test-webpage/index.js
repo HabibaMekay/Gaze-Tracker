@@ -145,6 +145,67 @@ function createMagnifier() {
     return magnifier;
 }
 
+let pressTimer = 0;
+let pressInterval = null;
+const pressTimerThreshold = 2000; //2 sec
+let isPressingFeedback = null;
+
+
+function pressVisualFeedback(btn,onComplete){
+    stopPressing(); // reset before starting :)
+    pressTimer =0;
+
+
+    isPressingFeedback = document.createElement('div');
+    isPressingFeedback.style.position = 'absolute';
+    isPressingFeedback.style.width = '100%';
+    isPressingFeedback.style.height = '100%';
+    isPressingFeedback.style.top = 0;
+    isPressingFeedback.style.left = 0;
+    isPressingFeedback.style.borderRadius = '6px';
+    isPressingFeedback.style.background = `linear-gradient(to right, #4caf50 0%, transparent 0%)`;
+    isPressingFeedback.style.zIndex = '3000';
+    isPressingFeedback.style.pointerEvents = 'none'; // to not block clicks
+    btn.style.position = 'relative';
+    btn.appendChild(isPressingFeedback);
+
+
+    pressInterval = setInterval(() => {
+        pressTimer += 100; // increment every 100ms
+        let progress = (pressTimer/pressTimerThreshold) * 100; // calculate progress percentage
+        isPressingFeedback.style.background = `linear-gradient(to right, #4caf50 ${progress}%, transparent ${progress}%)`;
+        if (pressTimer >= pressTimerThreshold) {
+            clearInterval(pressInterval);
+            pressInterval = null
+            stopPressing(); 
+
+            if (typeof onComplete === 'function') {
+                 onComplete();}
+           } 
+        }, 100); // update every 100ms
+
+}
+
+
+function stopPressing() {
+    if (pressInterval) {
+        clearInterval(pressInterval);
+        pressInterval = null;
+    }
+    if (isPressingFeedback) {
+        isPressingFeedback.remove();
+        isPressingFeedback = null;
+    }
+}
+
+
+
+
+
+
+
+
+
 function showVirtualKeyboard(targetInput) {
     let existingKeyboard = document.getElementById('virtual-keyboard');
     if (existingKeyboard) existingKeyboard.remove();
@@ -222,25 +283,27 @@ function showVirtualKeyboard(targetInput) {
             btn.style.border = '1px solid #888';
             btn.style.borderRadius = '6px';
             btn.style.background = '#f2f2f2';
+
+    btn.addEventListener('mouseenter', () => {
+        pressVisualFeedback(btn, () => { 
             if (key === '⬆') {
-                btn.style.fontWeight = 'bold';
-                btn.addEventListener('click', () => {
-                    isUppercase = !isUppercase;
-                    updateKeyLabels();
-                });
+                isUppercase = !isUppercase;
+                updateKeyLabels();
+            } else if (key === '←') {
+                targetInput.value = targetInput.value.slice(0, -1);
+            } else if (key === 'Space') {
+                targetInput.value += ' ';
             } else {
-                btn.addEventListener('click', () => {
-                    if (key === '←') {
-                        targetInput.value = targetInput.value.slice(0, -1);
-                    } else if (key === 'Space') {
-                        targetInput.value += ' ';
-                    } else {
-                        const value = /^[A-Z]$/.test(key) ? (isUppercase ? key : key.toLowerCase()) : key;
-                        targetInput.value += value;
-                    }
-                    targetInput.dispatchEvent(new Event('input', { bubbles: true }));
-                });
+                const value = /^[A-Z]$/.test(key) 
+                    ? (isUppercase ? key : key.toLowerCase()) 
+                    : key;
+                targetInput.value += value;
             }
+            targetInput.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+    });
+
+    btn.addEventListener('mouseleave', stopPressing);
 
             if (isLetter) keyButtons.push({ btn, key });
 
