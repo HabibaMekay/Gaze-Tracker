@@ -77,9 +77,9 @@ for i in range(len(X_test)):
     if i < 20:
         print(f"Test Sample {i + 1}: Pred=({pred_x:.2f}, {pred_y:.2f}), Actual=({actual_x:.2f}, {actual_y:.2f}), Error={error:.2f} px")
 
-# from sklearn.model_selection import cross_val_score
-# scores = cross_val_score(model, iris_data, gaze_data, cv=5, scoring='neg_mean_squared_error')
-# print("Cross-validated MSE:", -np.mean(scores))
+from sklearn.model_selection import cross_val_score
+scores = cross_val_score(model, iris_data, gaze_data, cv=5, scoring='neg_mean_squared_error')
+print("Cross-validated MSE:", -np.mean(scores))
 
 mean_error = np.mean(errors)
 print(f"\n📊 Mean error over {len(errors)} test samples: {mean_error:.2f} px")
@@ -92,3 +92,27 @@ model_dir = './model_rf'
 os.makedirs(model_dir, exist_ok=True)
 joblib.dump(model, os.path.join(model_dir, 'model_rf.pkl'))
 print("✅ Model saved successfully in ./model_rf folder")
+
+
+import json
+
+def tree_to_dict(tree):
+    return {
+        "children_left": tree.children_left.tolist(),
+        "children_right": tree.children_right.tolist(),
+        "feature": tree.feature.tolist(),
+        "threshold": tree.threshold.tolist(),
+        "value": tree.value[:, 0, :].tolist() 
+    }
+
+
+forest_data = {
+    "n_estimators": len(model.estimators_),
+    "n_features": model.n_features_in_,
+    "trees": [tree_to_dict(est.tree_) for est in model.estimators_]
+}
+
+with open(os.path.join(model_dir, "random_forest.json"), "w") as f:
+    json.dump(forest_data, f)
+
+print("✅ Model exported to random_forest.json for JavaScript usage")
