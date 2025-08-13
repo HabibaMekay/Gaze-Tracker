@@ -252,22 +252,26 @@ function showVirtualKeyboard(targetInput) {
         rowDiv.style.display = 'flex';
         rowDiv.style.justifyContent = 'space-between';
         rowDiv.style.marginBottom = '20px';
+        rowDiv.style.gap ='8px';
 
         row.forEach(key => {
             const btn = document.createElement('button');
             const isLetter = /^[A-Z]$/.test(key);
 
             if (key === 'Space') {
-                btn.textContent = '____________________';
+                btn.textContent = '_________________________________________';
                 btn.style.flex = '4';
-            } else if (isLetter) {
-                btn.textContent = isUppercase ? key : key.toLowerCase();
+            // } else if (isLetter) {
+
             } else {
                 btn.textContent = key;
+                btn.textContent = isUppercase ? key : key.toLowerCase();
+                btn.style.flex = '1';
             }
 
             btn.classList.add('virtual-key');
-            btn.style.padding = key === 'Space' ? '10px 80px' : '10px 14px';
+            // btn.style.padding = key === 'Space' ? '10px 80px' : '10px 14px';
+            btn.style.height = '60px'
             btn.style.margin = '3px';
             btn.style.fontSize = '25px';
             btn.style.cursor = 'pointer';
