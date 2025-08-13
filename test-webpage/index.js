@@ -160,7 +160,7 @@ function pressVisualFeedback(btn, onComplete) {
     isPressingFeedback.style.height = '100%';
     isPressingFeedback.style.top = '0';
     isPressingFeedback.style.left = '0';
-    isPressingFeedback.style.borderRadius = '6px';
+    isPressingFeedback.style.borderRadius = '999px';
     isPressingFeedback.style.background = `linear-gradient(to right, rgba(76, 175, 80, 0.1) 0%, transparent 100%)`;
     isPressingFeedback.style.zIndex = '3000';
     isPressingFeedback.style.pointerEvents = 'none'; // to not block clicks
@@ -217,7 +217,7 @@ function showVirtualKeyboard(targetInput) {
     keyboard.style.zIndex = '1000';
     keyboard.style.boxShadow = '0 0 10px rgba(0,0,0,0.3)';
     keyboard.style.borderRadius = '10px';
-    keyboard.style.width = '800px';
+    keyboard.style.width = '80%';
 
     const topBar = document.createElement('div');
     topBar.style.display = 'flex';
@@ -225,13 +225,16 @@ function showVirtualKeyboard(targetInput) {
     topBar.style.marginBottom = '15px';
 
     const closeButton = document.createElement('button');
-    closeButton.textContent = 'Close';
+    closeButton.textContent = 'X';
     closeButton.classList.add('virtual-key');
-    closeButton.style.padding = '12px 24px';
+    closeButton.style.padding = '20px 40px';
     closeButton.style.fontSize = '20px';
-    closeButton.style.borderRadius = '6px';
+    closeButton.style.borderRadius = '999px';
     closeButton.style.cursor = 'pointer';
     closeButton.style.border = '1px solid #888';
+    closeButton.style.maxWidth ='150px'
+    closeButton.style.height = '70px'
+    closeButton.style.width =   '150px';
     closeButton.style.background = '#f2f2f2';
     closeButton.addEventListener('click', () => keyboard.remove());
     topBar.appendChild(closeButton);
@@ -252,32 +255,40 @@ function showVirtualKeyboard(targetInput) {
         rowDiv.style.display = 'flex';
         rowDiv.style.justifyContent = 'space-between';
         rowDiv.style.marginBottom = '20px';
-        rowDiv.style.gap ='8px';
+        rowDiv.style.gap ='10px';
 
         row.forEach(key => {
             const btn = document.createElement('button');
             const isLetter = /^[A-Z]$/.test(key);
 
             if (key === 'Space') {
-                btn.textContent = '_________________________________________';
-                btn.style.flex = '4';
+                btn.textContent = '_______________________________________';
+                btn.style.width = '1200px'; 
+                // btn.style.flex = '4';
+                rowDiv.style.justifyContent = 'center'; 
+                
+
             // } else if (isLetter) {
+
+                
 
             } else {
                 btn.textContent = key;
                 btn.textContent = isUppercase ? key : key.toLowerCase();
-                btn.style.flex = '1';
+                btn.style.flex = '2';
+                btn.style.maxWidth = '120px';
             }
 
             btn.classList.add('virtual-key');
             // btn.style.padding = key === 'Space' ? '10px 80px' : '10px 14px';
-            btn.style.height = '60px'
+            btn.style.height = '80px'
             btn.style.margin = '3px';
             btn.style.fontSize = '25px';
             btn.style.cursor = 'pointer';
             btn.style.border = '1px solid #888';
-            btn.style.borderRadius = '6px';
+            btn.style.borderRadius = '999px'; //rounded keys
             btn.style.background = '#f2f2f2';
+            
 
             btn.addEventListener('click', () => {
                 if (key === '⬆') {
