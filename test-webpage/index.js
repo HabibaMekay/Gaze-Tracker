@@ -88,9 +88,9 @@ function ContextualScore(gazeX, gazeY) {
     
         else typeScore = 0.5;
         let totalScore;
-        if (element.classList.contains('virtual-key') && (element.textContent.trim() === '____')|| element.textContent.trim() === '←') {
-        if (distance < 50) {
-            totalScore = 0.3; // Only allow if gaze is right on top 
+        if (element.classList.contains('virtual-key') && (element.textContent.trim() === '_________________________________________')) {
+        if (distance < 100) { ////adjust////////
+            totalScore = 0.7; // Only allow if gaze is right on top 
         } else {
             totalScore = 0;
         }
@@ -225,7 +225,7 @@ function showVirtualKeyboard(targetInput) {
     topBar.style.marginBottom = '15px';
 
     const closeButton = document.createElement('button');
-    closeButton.textContent = 'Close';
+    closeButton.textContent = 'x';
     closeButton.classList.add('virtual-key');
     closeButton.style.padding = '12px 24px';
     closeButton.style.fontSize = '20px';
