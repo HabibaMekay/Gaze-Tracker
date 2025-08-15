@@ -232,7 +232,7 @@ function showVirtualKeyboard(targetInput) {
     closeButton.style.borderRadius = '999px';
     closeButton.style.cursor = 'pointer';
     closeButton.style.border = '1px solid #888';
-    closeButton.style.maxWidth ='150px'
+    closeButton.style.maxWidth ='120px'
     closeButton.style.height = '70px'
     closeButton.style.width =   '150px';
     closeButton.style.background = '#f2f2f2';
