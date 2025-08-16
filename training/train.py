@@ -93,7 +93,7 @@ os.makedirs(model_dir, exist_ok=True)
 joblib.dump(model, os.path.join(model_dir, 'model_rf.pkl'))
 print("✅ Model saved successfully in ./model_rf folder")
 
-
+# Export model to JSON with scaler parameters
 import json
 
 def tree_to_dict(tree):
@@ -102,17 +102,18 @@ def tree_to_dict(tree):
         "children_right": tree.children_right.tolist(),
         "feature": tree.feature.tolist(),
         "threshold": tree.threshold.tolist(),
-        "value": tree.value[:, 0, :].tolist() 
+        "value": tree.value[:, 0, :].tolist()
     }
-
 
 forest_data = {
     "n_estimators": len(model.estimators_),
     "n_features": model.n_features_in_,
-    "trees": [tree_to_dict(est.tree_) for est in model.estimators_]
+    "trees": [tree_to_dict(est.tree_) for est in model.estimators_],
+    "scaler_min": scaler.min_.tolist(),
+    "scaler_scale": scaler.scale_.tolist()
 }
 
 with open(os.path.join(model_dir, "random_forest.json"), "w") as f:
     json.dump(forest_data, f)
 
-print("✅ Model exported to random_forest.json for JavaScript usage")
+print("✅ Model exported to random_forest.json with scaler parameters for JavaScript usage")

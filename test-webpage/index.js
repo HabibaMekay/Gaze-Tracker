@@ -1,3 +1,58 @@
+//const fs = require('fs').promises; // Comment out for browser
+const fetch = window.fetch;
+
+// Random Forest prediction functions
+function predictTree(tree, input) {
+  function traverse(nodeIndex, input) {
+    if (tree.children_left[nodeIndex] === -1 && tree.children_right[nodeIndex] === -1) {
+      return tree.value[nodeIndex]; // Return [x, y] normalized coordinates
+    }
+    const feature = tree.feature[nodeIndex];
+    const threshold = tree.threshold[nodeIndex];
+    return input[feature] <= threshold
+      ? traverse(tree.children_left[nodeIndex], input)
+      : traverse(tree.children_right[nodeIndex], input);
+  }
+  return traverse(0, input);
+}
+
+function predictRandomForest(model, input) {
+  let sumPred = [0, 0];
+  for (const tree of model.trees) {
+    const pred = predictTree(tree, input);
+    sumPred[0] += pred[0];
+    sumPred[1] += pred[1];
+  }
+  return [
+    sumPred[0] / model.n_estimators,
+    sumPred[1] / model.n_estimators
+  ];
+}
+
+function normalizeInput(input, scalerMin, scalerScale) {
+  const normalized = [];
+  for (let i = 0; i < input.length; i++) {
+    normalized[i] = (input[i] - scalerMin[i]) * scalerScale[i];
+  }
+  return normalized;
+}
+
+async function loadRandomForestModel() {
+  try {
+    // For Node.js
+    // const modelData = await fs.readFile('./model_rf/random_forest.json', 'utf8');
+    // return JSON.parse(modelData);
+    // For browser, uncomment:
+    const response = await fetch('./model_rf/random_forest.json');
+    return await response.json();
+  } catch (error) {
+    console.error('Error loading Random Forest model:', error);
+    return null;
+  }
+}
+
+
+
 let smoothedX = 0, smoothedY = 0;// store the last smoothed gaze position
 const SMOOTHING = 0.1;  ///make this bigger to move the dot more quickly (lighter gaze movements)//// smaller to make it more stable and slow
 let baselineVy = null;
@@ -88,9 +143,9 @@ function ContextualScore(gazeX, gazeY) {
     
         else typeScore = 0.5;
         let totalScore;
-        if (element.classList.contains('virtual-key') && (element.textContent.trim() === '_________________________________________')) {
-        if (distance < 100) { ////adjust////////
-            totalScore = 0.7; // Only allow if gaze is right on top 
+        if (element.classList.contains('virtual-key') && (element.textContent.trim() === '____')|| element.textContent.trim() === '←') {
+        if (distance < 50) {
+            totalScore = 0.3; // Only allow if gaze is right on top 
         } else {
             totalScore = 0;
         }
@@ -150,37 +205,42 @@ let pressInterval = null;
 const pressTimerThreshold = 2000; //2 sec
 let isPressingFeedback = null;
 
-function pressVisualFeedback(btn, onComplete) {
+
+function pressVisualFeedback(btn,onComplete){
     stopPressing(); // reset before starting :)
-    pressTimer=0;
+    pressTimer =0;
+
 
     isPressingFeedback = document.createElement('div');
     isPressingFeedback.style.position = 'absolute';
     isPressingFeedback.style.width = '100%';
     isPressingFeedback.style.height = '100%';
-    isPressingFeedback.style.top = '0';
-    isPressingFeedback.style.left = '0';
-    isPressingFeedback.style.borderRadius = '999px';
-    isPressingFeedback.style.background = `linear-gradient(to right, rgba(76, 175, 80, 0.1) 0%, transparent 100%)`;
+    isPressingFeedback.style.top = 0;
+    isPressingFeedback.style.left = 0;
+    isPressingFeedback.style.borderRadius = '6px';
+    isPressingFeedback.style.background = `linear-gradient(to right, #4caf50 0%, transparent 0%)`;
     isPressingFeedback.style.zIndex = '3000';
     isPressingFeedback.style.pointerEvents = 'none'; // to not block clicks
     btn.style.position = 'relative';
     btn.appendChild(isPressingFeedback);
 
+
     pressInterval = setInterval(() => {
         pressTimer += 100; // increment every 100ms
         let progress = (pressTimer/pressTimerThreshold) * 100; // calculate progress percentage
-        isPressingFeedback.style.background = `linear-gradient(to right, rgba(76, 175, 80, 0.5) ${progress}%, transparent ${progress}%)`;
+        isPressingFeedback.style.background = `linear-gradient(to right, #4caf50 ${progress}%, transparent ${progress}%)`;
         if (pressTimer >= pressTimerThreshold) {
             clearInterval(pressInterval);
-            pressInterval = null;
-            stopPressing()
+            pressInterval = null
+            stopPressing(); 
+
             if (typeof onComplete === 'function') {
-                onComplete();
-            }
-        }
-    }, 100); // update every 100ms
+                 onComplete();}
+           } 
+        }, 100); // update every 100ms
+
 }
+
 
 function stopPressing() {
     if (pressInterval) {
@@ -192,6 +252,8 @@ function stopPressing() {
         isPressingFeedback = null;
     }
 }
+
+
 
 
 
@@ -217,34 +279,31 @@ function showVirtualKeyboard(targetInput) {
     keyboard.style.zIndex = '1000';
     keyboard.style.boxShadow = '0 0 10px rgba(0,0,0,0.3)';
     keyboard.style.borderRadius = '10px';
-    keyboard.style.width = '80%';
+    keyboard.style.width = '800px';
 
     const topBar = document.createElement('div');
     topBar.style.display = 'flex';
     topBar.style.justifyContent = 'flex-end';
     topBar.style.marginBottom = '15px';
 
+
     const closeButton = document.createElement('button');
-    closeButton.textContent = 'X';
-    closeButton.classList.add('virtual-key');
-    closeButton.style.padding = '20px 40px';
+    closeButton.textContent = 'Close';
+    closeButton.style.padding = '12px 24px';
     closeButton.style.fontSize = '20px';
-    closeButton.style.borderRadius = '999px';
+    closeButton.style.borderRadius = '6px';
+    closeButton.style.top = '8px';
+    closeButton.style.right = '5px';
     closeButton.style.cursor = 'pointer';
-    closeButton.style.border = '1px solid #888';
-    closeButton.style.maxWidth ='120px'
-    closeButton.style.height = '70px'
-    closeButton.style.width =   '150px';
-    closeButton.style.background = '#f2f2f2';
     closeButton.addEventListener('click', () => keyboard.remove());
-    topBar.appendChild(closeButton);
+    keyboard.appendChild(closeButton);
     keyboard.appendChild(topBar);
 
     const rows = [
-        ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '←'],
-        ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
-        ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L'],
-        ['⬆', 'Z', 'X', 'C', 'V', 'B', 'N', 'M'],
+        ['1','2','3','4','5','6','7','8','9','0','←'],
+        ['Q','W','E','R','T','Y','U','I','O','P'],
+        ['A','S','D','F','G','H','J','K','L'],
+        ['⬆','Z','X','C','V','B','N','M'],
         ['Space']
     ];
 
@@ -255,63 +314,59 @@ function showVirtualKeyboard(targetInput) {
         rowDiv.style.display = 'flex';
         rowDiv.style.justifyContent = 'space-between';
         rowDiv.style.marginBottom = '20px';
-        rowDiv.style.gap ='10px';
 
         row.forEach(key => {
             const btn = document.createElement('button');
             const isLetter = /^[A-Z]$/.test(key);
 
             if (key === 'Space') {
-                btn.textContent = '_______________________________________';
-                btn.style.width = '1200px'; 
-                // btn.style.flex = '4';
-                rowDiv.style.justifyContent = 'center'; 
-                
+                btn.textContent = '____________________';
+                btn.style.flex = '4';  
 
-            // } else if (isLetter) {
-
-                
-
+            } else if (isLetter) {
+                btn.textContent = isUppercase ? key : key.toLowerCase();
             } else {
                 btn.textContent = key;
-                btn.textContent = isUppercase ? key : key.toLowerCase();
-                btn.style.flex = '2';
-                btn.style.maxWidth = '120px';
+                
             }
 
-            btn.classList.add('virtual-key');
-            // btn.style.padding = key === 'Space' ? '10px 80px' : '10px 14px';
-            btn.style.height = '80px'
+            btn.classList.add("virtual-key");
+            btn.style.padding = key === 'Space' ? '10px 80px' : '10px 14px';
             btn.style.margin = '3px';
             btn.style.fontSize = '25px';
             btn.style.cursor = 'pointer';
             btn.style.border = '1px solid #888';
-            btn.style.borderRadius = '999px'; //rounded keys
+            btn.style.borderRadius = '6px';
             btn.style.background = '#f2f2f2';
-            
 
-            btn.addEventListener('click', () => {
-                if (key === '⬆') {
-                    isUppercase = !isUppercase;
-                    updateKeyLabels();
-                } else if (key === '←') {
-                    targetInput.value = targetInput.value.slice(0, -1);
-                } else if (key === 'Space') {
-                    targetInput.value += ' ';
-                } else {
-                    const value = /^[A-Z]$/.test(key)
-                        ? (isUppercase ? key : key.toLowerCase())
-                        : key;
-                    targetInput.value += value;
-                }
-                targetInput.dispatchEvent(new Event('input', { bubbles: true }));
-            });
+    btn.addEventListener('mouseenter', () => {
+        pressVisualFeedback(btn, () => { 
+            if (key === '⬆') {
+                isUppercase = !isUppercase;
+                updateKeyLabels();
+            } else if (key === '←') {
+                targetInput.value = targetInput.value.slice(0, -1);
+            } else if (key === 'Space') {
+                targetInput.value += ' ';
+            } else {
+                const value = /^[A-Z]$/.test(key) 
+                    ? (isUppercase ? key : key.toLowerCase()) 
+                    : key;
+                targetInput.value += value;
+            }
+            targetInput.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+    });
+
+    btn.addEventListener('mouseleave', stopPressing);
 
             if (isLetter) keyButtons.push({ btn, key });
+
             rowDiv.appendChild(btn);
         });
 
         keyboard.appendChild(rowDiv);
+        
     });
 
     function updateKeyLabels() {
@@ -565,8 +620,6 @@ function softSigmoid(v, gain) { // Soft sigmoid function to map gaze values to s
     // maps -1…+1 to ~-1…+1 but flattens near 0
     return v / (1 + Math.abs(v) * gain);
 }
-
-// function to get model prediction
 function getModelPrediction(leftEyeIris, rightEyeIris, video, gazeModel) {
     // FOR THE MODEL
     const videoWidth = video.videoWidth; // Get the video width to normalize coordinates to
@@ -589,7 +642,26 @@ function getModelPrediction(leftEyeIris, rightEyeIris, video, gazeModel) {
         modelDy: predY * window.innerHeight
     };
 }
-
+// // function to get model prediction
+// function getModelPrediction(leftEyeIris, rightEyeIris, video, model) {
+//   const videoWidth = video.videoWidth;
+//   const videoHeight = video.videoHeight;
+//   const dx = rightEyeIris.x - leftEyeIris.x;
+//   const dy = rightEyeIris.y - leftEyeIris.y;
+//   const mid_x = (leftEyeIris.x + rightEyeIris.x) / 2;
+//   const mid_y = (leftEyeIris.y + rightEyeIris.y) / 2;
+//   const input = [
+//     leftEyeIris.x, leftEyeIris.y,
+//     rightEyeIris.x, rightEyeIris.y,
+//     dx, dy, mid_x, mid_y
+//   ];
+//   const normalizedInput = normalizeInput(input, model.scaler_min, model.scaler_scale);
+//   const [predX, predY] = predictRandomForest(model, normalizedInput);
+//   return {
+//     modelDx: predX * window.innerWidth,
+//     modelDy: predY * window.innerHeight
+//   };
+// }
 // function to collect calibration data
 function collectCalibrationData(leftEyeIris, rightEyeIris, video) {
     // If we are collecting data and have a calibration target(red dot)
@@ -670,18 +742,14 @@ function handleInteractions(clampedX, clampedY, cursor) {
         closestDistance = candidates[0].distance;
     }
 
-    if (closestElement && closestDistance < 120) {
+    if (closestElement && closestDistance < 120
+
+) {
         const tag = closestElement.tagName.toLowerCase();
         if (activeElement === closestElement) {
             const dwellTime = Date.now() - dwellStartTime;
             console.log(`Dwell progress: ${dwellTime}`);
-            if (closestElement.classList.contains('virtual-key') && !isPressingFeedback) {
-                // start visual feedback for virtual keys
-                pressVisualFeedback(closestElement, () => {
-                    closestElement.click();
-                });
-            }
-            if (dwellTime >= dwellThreshold && !closestElement.classList.contains('virtual-key')) {
+            if (dwellTime >= dwellThreshold) {
                 console.log(`Dwell progress REACHED`);
                 taskCompletions++;
                 if (tag === "button" || closestElement.getAttribute("role") === "button") {
@@ -694,6 +762,9 @@ function handleInteractions(clampedX, clampedY, cursor) {
                 } else if (tag === "a" || closestElement.getAttribute("role") === "link") {
                     console.log("Link clicked via gaze");
                     closestElement.click();
+                } else if (closestElement.classList.contains('virtual-key')) {
+                    console.log("Virtual key clicked via gaze");
+                    closestElement.click();
                 }
                 dwellStartTime = null;
                 activeElement = null;
@@ -701,13 +772,11 @@ function handleInteractions(clampedX, clampedY, cursor) {
         } else {
             activeElement = closestElement;
             dwellStartTime = Date.now();
-            stopPressing();
         }
     } else {
         if (closestDistance > 120) errors++;
         dwellStartTime = null;
         activeElement = null;
-        stopPressing(); 
     }
 
     // scroll only if not dwelling on an element
@@ -735,7 +804,7 @@ function handleInteractions(clampedX, clampedY, cursor) {
                 scrollDirection = 'down';
             }
             const scrollDwellTime = Date.now() - scrollDwellStart;
-            if (scrollDwellTime >= SCROLL_DWELL_THRESHOLD) {
+            if (scrollDwellTime >= SCROLL_DWELL_THRESHOLD) { // if enough time has passed in the scroll zone
                 const depth = (cursorCenterY - (window.innerHeight - scrollZoneSize)) / scrollZoneSize;
                 scrollSpeed = MAX_SCROLL_SPEED * depth;
                 window.scrollBy(0, scrollSpeed);
@@ -820,7 +889,7 @@ async function updateMagnifier(magnifier, magnifierCtx, clampedX, clampedY, curs
     }
 }
 
-// main async function refactored
+// Main async function refactored with original comments
 async function continueDetection(video, detector, canvas, cursor, gazeModel) {
     const face = await detector.estimateFaces(video);
     const ctx = canvas.getContext('2d');
@@ -1095,9 +1164,28 @@ function createCanvas(video) {
 
 
 
+async function loadRandomForestModel() {
+  try {
+    const response = await fetch('final_model/random_forest.json');
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const model = await response.json();
+    console.log('Loaded model:', model);
+    if (!model.scaler_min || !model.scaler_scale) {
+      throw new Error('Model missing scaler_min or scaler_scale');
+    }
+    return model;
+  } catch (error) {
+    console.error('Error loading Random Forest model:', error);
+    return null;
+  }
+}
 
-        async function main() {
-            const gazeModel = await tf.loadLayersModel('model/model.json');
+async function main() {
+            const gazeModel = await loadRandomForestModel();
+            if (!gazeModel) {
+                alert('Failed to load Random Forest model. Check console for details.');
+                return;
+            }
             const video = await camera();
             if (!video) return;
             const canvas = createCanvas(video);
@@ -1123,3 +1211,5 @@ function createCanvas(video) {
 // });
 
 main();
+
+
