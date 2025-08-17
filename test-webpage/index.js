@@ -1,5 +1,56 @@
 //const fs = require('fs').promises; // Comment out for browser
 const fetch = window.fetch;
+///////////////
+// === TEMP: model JSON loader for sanity check ===
+let RF = null;
+
+async function loadForest() {
+  if (RF) return RF;
+  try {
+    // since index.html is in test-webpage/, the relative path is:
+    const res = await fetch('./final_model/random_forest.json');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    RF = await res.json();
+
+    // Log a few keys so we know it loaded correctly
+    const keys = Object.keys(RF);
+    console.log('[RF] loaded. top-level keys:', keys);
+
+    // If your export has these, log some quick stats:
+    if (RF.scaler?.mean_?.length) {
+      console.log('[RF] scaler mean length:', RF.scaler.mean_.length);
+    }
+    if (Array.isArray(RF.trees)) {
+      console.log('[RF] number of trees:', RF.trees.length);
+      // peek at first tree’s keys if available
+      if (RF.trees[0]) {
+        console.log('[RF] first tree keys:', Object.keys(RF.trees[0]));
+      }
+    }
+  } catch (e) {
+    console.error('[RF] failed to load random_forest.json:', e);
+  }
+  return RF;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+///////////////
+
+
+
+
+
 
 // Random Forest prediction functions
 function predictTree(tree, input) {
@@ -37,7 +88,7 @@ function normalizeInput(input, scalerMin, scalerScale) {
   return normalized;
 }
 
-async function loadRandomForestModel() {
+/* async function loadRandomForestModel() {
   try {
     // For Node.js
     // const modelData = await fs.readFile('./model_rf/random_forest.json', 'utf8');
@@ -49,7 +100,7 @@ async function loadRandomForestModel() {
     console.error('Error loading Random Forest model:', error);
     return null;
   }
-}
+} */
 
 
 
@@ -622,28 +673,53 @@ function softSigmoid(v, gain) { // Soft sigmoid function to map gaze values to s
     // maps -1…+1 to ~-1…+1 but flattens near 0
     return v / (1 + Math.abs(v) * gain);
 }
-function getModelPrediction(leftEyeIris, rightEyeIris, video, gazeModel) {
-    // FOR THE MODEL
-    const videoWidth = video.videoWidth; // Get the video width to normalize coordinates to
-    const videoHeight = video.videoHeight; // Get the video height
+function getModelPrediction(leftEyeIris, rightEyeIris, video) {
+    if (!RF) return { modelDx: 0, modelDy: 0 };
 
-    const inputTensor = tf.tensor2d([[
-        leftEyeIris.x / videoWidth,
-        leftEyeIris.y / videoHeight,
-        rightEyeIris.x / videoWidth,
-        rightEyeIris.y / videoHeight
-    ]]);
+  const vw = video.videoWidth;
+  const vh = video.videoHeight;
 
-    const prediction = gazeModel.predict(inputTensor);
-    const [predX, predY] = prediction.dataSync(); // These are in 0–1 normalized screen coordinates
-    inputTensor.dispose();
-    prediction.dispose();
+  // Base features (normalized iris centers)
+  const f4 = [
+    leftEyeIris.x / vw,
+    leftEyeIris.y / vh,
+    rightEyeIris.x / vw,
+    rightEyeIris.y / vh
+  ];
 
-    return {
-        modelDx: predX * window.innerWidth,
-        modelDy: predY * window.innerHeight
-    };
+  // Extended features (if scaler expects more)
+  const dx = (rightEyeIris.x - leftEyeIris.x) / vw;
+  const dy = (rightEyeIris.y - leftEyeIris.y) / vh;
+  const mid_x = (leftEyeIris.x + rightEyeIris.x) / (2 * vw);
+  const mid_y = (leftEyeIris.y + rightEyeIris.y) / (2 * vh);
+  const f8 = [...f4, dx, dy, mid_x, mid_y];
+
+  // Your JSON shows: scaler fields are 'scaler_min' and 'scaler_scale'
+  const sMin   = RF.scaler_min;
+  const sScale = RF.scaler_scale;
+
+  // Choose feature vector that matches scaler length
+  let feats = f4;
+  if (Array.isArray(sMin) && sMin.length === 8) feats = f8;
+  else if (Array.isArray(sMin) && sMin.length !== 4) feats = f8.slice(0, sMin.length);
+
+  // Normalize if scaler present
+  let x = feats;
+  if (Array.isArray(sMin) && Array.isArray(sScale) &&
+      sMin.length === x.length && sScale.length === x.length) {
+    x = normalizeInput(x, sMin, sScale);
+  }
+
+  // Predict [x_norm, y_norm]
+  const [predX, predY] = predictRandomForest(RF, x);
+
+  // Convert normalized coords to pixels
+  return {
+    modelDx: predX * window.innerWidth,
+    modelDy: predY * window.innerHeight
+  };
 }
+
 // // function to get model prediction
 // function getModelPrediction(leftEyeIris, rightEyeIris, video, model) {
 //   const videoWidth = video.videoWidth;
@@ -692,19 +768,24 @@ function collectCalibrationData(leftEyeIris, rightEyeIris, video) {
 
 // function to fuse vector and model outputs
 function fuseOutputs(dx, dy, modelDx, modelDy) {
-    // FOR THE MODEL
-    const FUSION_WEIGHT = 1; // tune between 0 (ML only) to 1 (vector only)
-    // the problem here that dx -> move 200 px from center while modelDx -> gives pixel 15200 on screen
-    // aka dx -> how far you should move (relative offset), modelDx -> a position on the screen(Absolute position)
-    // so we need to fuse them in a way that they are comparable
-    // because these are different units
-    const centerX = window.innerWidth / 2; // center of the screen
-    const centerY = window.innerHeight / 2;
+    // Weight: 0 = ML-only, 1 = vector-only
+  const W = 0.7;  // start with 70% vector, 30% ML
 
-    const fusedDx = FUSION_WEIGHT * dx + (1 - FUSION_WEIGHT) * modelDx;
-    const fusedDy = FUSION_WEIGHT * dy + (1 - FUSION_WEIGHT) * modelDy;
+  // Convert model absolute position -> offsets around screen center
+  const cx = window.innerWidth  / 2;
+  const cy = window.innerHeight / 2;
+  let mdx = modelDx - cx;
+  let mdy = modelDy - cy;
 
-    return { fusedDx, fusedDy };
+  // Optional: clamp model offsets to avoid sudden jumps
+  const clamp = (v, lim) => Math.max(-lim, Math.min(lim, v));
+  mdx = clamp(mdx, 0.9 * cx);
+  mdy = clamp(mdy, 0.9 * cy);
+
+  const fusedDx = W * dx + (1 - W) * mdx;
+  const fusedDy = W * dy + (1 - W) * mdy;
+
+  return { fusedDx, fusedDy };
 }
 
 // function to position cursor
@@ -900,7 +981,7 @@ async function updateMagnifier(magnifier, magnifierCtx, clampedX, clampedY, curs
 }
 
 // Main async function refactored with original comments
-async function continueDetection(video, detector, canvas, cursor, gazeModel) {
+async function continueDetection(video, detector, canvas, cursor) {
     const face = await detector.estimateFaces(video);
     const ctx = canvas.getContext('2d');
     //////////////////// FOR THE MODEL ///////////////////////
@@ -913,7 +994,7 @@ async function continueDetection(video, detector, canvas, cursor, gazeModel) {
     if (face.length > 0) {
         if (face[0].faceInViewConfidence !== undefined && face[0].faceInViewConfidence < 0.99) {
             console.warn("Low confidence — skipping frame"); // if confidence is low, skip the frame // maybe add a warning or make users refresh the page
-            requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor, gazeModel));
+            requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor));
             return;
         }
         console.log('Face detected:', face[0]);
@@ -928,7 +1009,7 @@ async function continueDetection(video, detector, canvas, cursor, gazeModel) {
 
         if (!isIrisShapeValid(rightIrisPoints) || !isIrisShapeValid(leftIrisPoints)) { // if eye is not circleish skip the frame
             console.warn("Iris shape invalid — skipping frame");
-            requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor, gazeModel)); // Skip the frame if iris shape is not valid
+            requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor)); // Skip the frame if iris shape is not valid
             return;
         }
 
@@ -943,7 +1024,7 @@ async function continueDetection(video, detector, canvas, cursor, gazeModel) {
         const isInsideHeadFrame = drawCircleFrame(ctx, nosetip, leftEyeInnerCorner, rightEyeInnerCorner, canvas);
         if (!isInsideHeadFrame) { // If the nose tip is outside the head frame, skip the frame
             console.warn("Nose tip outside head frame — skipping frame");
-            requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor, gazeModel));
+            requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor));
             return;
         } // End of head frame
 
@@ -978,7 +1059,7 @@ async function continueDetection(video, detector, canvas, cursor, gazeModel) {
 
         collectCalibrationData(leftEyeIris, rightEyeIris, video);
 
-        const { modelDx: predModelDx, modelDy: predModelDy } = getModelPrediction(leftEyeIris, rightEyeIris, video, gazeModel);
+        const { modelDx: predModelDx, modelDy: predModelDy } = getModelPrediction(leftEyeIris, rightEyeIris, video);
         modelDx = predModelDx;
         modelDy = predModelDy;
         // debugging the model
@@ -1000,7 +1081,7 @@ async function continueDetection(video, detector, canvas, cursor, gazeModel) {
         console.log('No face detected');
     }
 
-    requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor, gazeModel)); // Call the function again for continuous detection
+    requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor)); // Call the function again for continuous detection
 }
 
 
@@ -1175,15 +1256,10 @@ function createCanvas(video) {
 
 
 async function loadRandomForestModel() {
-  try {
-    const response = await fetch('final_model/random_forest.json');
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    const model = await response.json();
-    console.log('Loaded model:', model);
-    if (!model.scaler_min || !model.scaler_scale) {
-      throw new Error('Model missing scaler_min or scaler_scale');
-    }
-    return model;
+   try {
+    // Browser path
+    const response = await fetch('./final_model/random_forest.json');
+    return await response.json();
   } catch (error) {
     console.error('Error loading Random Forest model:', error);
     return null;
@@ -1191,11 +1267,13 @@ async function loadRandomForestModel() {
 }
 
 async function main() {
-            const gazeModel = await loadRandomForestModel();
+            /* const gazeModel = await loadRandomForestModel();
             if (!gazeModel) {
                 alert('Failed to load Random Forest model. Check console for details.');
                 return;
-            }
+             }*/
+            // TEMP: just to verify JSON is reachable
+            await loadForest();
             const video = await camera();
             if (!video) return;
             const canvas = createCanvas(video);
@@ -1205,7 +1283,7 @@ async function main() {
             createHeatMapLayer();
             // magnifier = createMagnifier();
             // magnifierCtx = magnifier.getContext('2d');
-            continueDetection(video, detector, canvas, cursor, gazeModel);
+            continueDetection(video, detector, canvas, cursor);
             // showNextCalibrationPoint();
         }
 
