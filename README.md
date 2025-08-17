@@ -83,6 +83,7 @@
 ---
 ## Usage
 - Usage instructions will be added after the prototype is ready.
+- currently run python -m http.server and open http://localhost:8000/ then choose test-webpage/
 
 [Back to top](#context-aware-gaze-based-interaction-for-users-with-motor-disabilities)
 
@@ -98,9 +99,13 @@
 
 [Research Internship Tracking Link](https://docs.google.com/spreadsheets/d/1a3_x1lYoI29PlsTCBJ-RwOVxCyfKYMAR/edit?usp=sharing&ouid=104954934820321621733&rtpof=true&sd=true)
 
+
+
 #how to run training 
 
 cd training 
 npm init -y   
 npm install @tensorflow/tfjs-node csv-parser
 node train.js
+
+
