@@ -54,17 +54,35 @@ async function loadForest() {
 
 // Random Forest prediction functions
 function predictTree(tree, input) {
-  function traverse(nodeIndex, input) {
-    if (tree.children_left[nodeIndex] === -1 && tree.children_right[nodeIndex] === -1) {
-      return tree.value[nodeIndex]; // Return [x, y] normalized coordinates
+  // If input is missing, be safe
+  if (!Array.isArray(input)) return [0, 0];
+
+  let node = 0;
+  const cl = tree.children_left, cr = tree.children_right;
+  const f  = tree.feature,        thr = tree.threshold;
+
+  while (cl[node] !== -1 && cr[node] !== -1) {
+    const featIdx = f[node];
+    // If feature index is out of bounds or value is non-finite, go left by default
+    let goLeft = true;
+    if (Number.isInteger(featIdx) && featIdx >= 0 && featIdx < input.length) {
+      const val = input[featIdx];
+      goLeft = Number.isFinite(val) ? (val <= thr[node]) : true;
     }
-    const feature = tree.feature[nodeIndex];
-    const threshold = tree.threshold[nodeIndex];
-    return input[feature] <= threshold
-      ? traverse(tree.children_left[nodeIndex], input)
-      : traverse(tree.children_right[nodeIndex], input);
+    node = goLeft ? cl[node] : cr[node];
   }
-  return traverse(0, input);
+
+  // leaf value might be [[x,y]] or [x,y]; make it numeric
+  let v = tree.value[node];
+  if (Array.isArray(v) && Array.isArray(v[0])) v = v[0];
+
+  const x = Number(v?.[0]);
+  const y = Number(v?.[1]);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    console.warn('[RF] Non-finite leaf value at node', node, 'value:', v);
+    return [0, 0];
+  }
+  return [x, y];
 }
 
 function predictRandomForest(model, input) {
@@ -81,11 +99,27 @@ function predictRandomForest(model, input) {
 }
 
 function normalizeInput(input, scalerMin, scalerScale) {
-  const normalized = [];
+  const out = new Array(input.length);
   for (let i = 0; i < input.length; i++) {
-    normalized[i] = (input[i] - scalerMin[i]) * scalerScale[i];
+    const xi = Number(input[i]);
+    const mi = Number(scalerMin?.[i]);
+    const si = Number(scalerScale?.[i]);
+
+    const x = Number.isFinite(xi) ? xi : 0;
+    const m = Number.isFinite(mi) ? mi : 0;
+    const s = (Number.isFinite(si) && si !== 0) ? si : 1;
+
+    out[i] = (x - m) * s;
   }
-  return normalized;
+
+  for (let i = 0; i < out.length; i++) {
+    if (!Number.isFinite(out[i])) {
+      console.warn('[RF] normalize produced non-finite at index', i,
+                   'x=', input[i], 'min=', scalerMin?.[i], 'scale=', scalerScale?.[i]);
+      out[i] = 0;
+    }
+  }
+  return out; // IMPORTANT
 }
 
 /* async function loadRandomForestModel() {
@@ -709,7 +743,9 @@ function getModelPrediction(leftEyeIris, rightEyeIris, video) {
       sMin.length === x.length && sScale.length === x.length) {
     x = normalizeInput(x, sMin, sScale);
   }
-
+console.log('[RF] featlen:', Array.isArray(x) ? x.length : x,
+            'expected:', RF.n_features,
+            'scalerLen:', Array.isArray(RF.scaler_min) ? RF.scaler_min.length : 'n/a');
   // Predict [x_norm, y_norm]
   const [predX, predY] = predictRandomForest(RF, x);
 
@@ -1021,12 +1057,8 @@ async function continueDetection(video, detector, canvas, cursor) {
         const { Vx, Vy, L, H, noseBridge, nosetip } = normalizeGazeVector(gazeVector, keypoints);
 
         // For the head frame
-        const isInsideHeadFrame = drawCircleFrame(ctx, nosetip, leftEyeInnerCorner, rightEyeInnerCorner, canvas);
-        if (!isInsideHeadFrame) { // If the nose tip is outside the head frame, skip the frame
-            console.warn("Nose tip outside head frame — skipping frame");
-            requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor));
-            return;
-        } // End of head frame
+        // For the head frame — draw only, do not gate
+       drawCircleFrame(ctx, nosetip, leftEyeInnerCorner, rightEyeInnerCorner, canvas);
 
         // Debugging
         console.log('Left Eye Iris:', leftEyeIris);
