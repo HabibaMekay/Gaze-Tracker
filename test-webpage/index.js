@@ -85,18 +85,45 @@ function predictTree(tree, input) {
   return [x, y];
 }
 
+// function predictRandomForest(model, input) {
+//   let sumPred = [0, 0];
+//   for (const tree of model.trees) {
+//     const pred = predictTree(tree, input);
+//     sumPred[0] += pred[0];
+//     sumPred[1] += pred[1];
+//   }
+//   return [
+//     sumPred[0] / model.n_estimators,
+//     sumPred[1] / model.n_estimators
+//   ];
+// }
+
+// commneted it out for debugging 
+
 function predictRandomForest(model, input) {
   let sumPred = [0, 0];
-  for (const tree of model.trees) {
+
+  model.trees.forEach((tree, idx) => {
     const pred = predictTree(tree, input);
+    console.log("Tree", idx, "prediction:", pred);  // 🔍 log each tree output
     sumPred[0] += pred[0];
     sumPred[1] += pred[1];
-  }
-  return [
+  });
+
+  const avgPred = [
     sumPred[0] / model.n_estimators,
     sumPred[1] / model.n_estimators
   ];
+
+  console.log("Average prediction:", avgPred); // 🔍 log the average too
+  return avgPred;
 }
+
+
+
+
+
+
 
 function normalizeInput(input, scalerMin, scalerScale) {
   const out = new Array(input.length);
@@ -708,7 +735,7 @@ function softSigmoid(v, gain) { // Soft sigmoid function to map gaze values to s
     return v / (1 + Math.abs(v) * gain);
 }
 function getModelPrediction(leftEyeIris, rightEyeIris, video) {
-    if (!RF) return { modelDx: 0, modelDy: 0 };
+     if (!RF) return { modelDx: 0, modelDy: 0 };
 
   const vw = video.videoWidth;
   const vh = video.videoHeight;
@@ -747,14 +774,24 @@ console.log('[RF] featlen:', Array.isArray(x) ? x.length : x,
             'expected:', RF.n_features,
             'scalerLen:', Array.isArray(RF.scaler_min) ? RF.scaler_min.length : 'n/a');
   // Predict [x_norm, y_norm]
+  console.log("Input to RF (features):", x);
+console.log("Number of trees in RF:", RF.trees ? RF.trees.length : "none");
+
   const [predX, predY] = predictRandomForest(RF, x);
+
+   console.log(predX , predY);
+   console.log(predX* window.innerWidth) ;
+    console.log(predY * window.innerHeight);
 
   // Convert normalized coords to pixels
   return {
     modelDx: predX * window.innerWidth,
     modelDy: predY * window.innerHeight
   };
+
 }
+
+
 
 // // function to get model prediction
 // function getModelPrediction(leftEyeIris, rightEyeIris, video, model) {
@@ -1095,7 +1132,7 @@ async function continueDetection(video, detector, canvas, cursor) {
         modelDx = predModelDx;
         modelDy = predModelDy;
         // debugging the model
-        console.log("ML Prediction:", { modelDx, modelDy });
+        // console.log("ML Prediction:", { modelDx, modelDy });
 
         const { fusedDx, fusedDy } = fuseOutputs(dx, dy, modelDx, modelDy);
 
