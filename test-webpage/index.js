@@ -3,6 +3,9 @@ const fetch = window.fetch;
 ///////////////
 // === TEMP: model JSON loader for sanity check ===
 let RF = null;
+const RF_SWAP_EYES = false; // set to true if needed later
+const RF_BYPASS_SCALER = true;   // CSV features were already 0..1
+const RF_MIRROR_X = false;       // start with false; we can flip if needed
 
 async function loadForest() {
   if (RF) return RF;
@@ -126,27 +129,22 @@ function predictRandomForest(model, input) {
 
 
 function normalizeInput(input, scalerMin, scalerScale) {
-  const out = new Array(input.length);
+   const out = new Array(input.length);
   for (let i = 0; i < input.length; i++) {
     const xi = Number(input[i]);
-    const mi = Number(scalerMin?.[i]);
-    const si = Number(scalerScale?.[i]);
+    const si = Number(scalerScale?.[i]); // scikit: scale_
+    const mi = Number(scalerMin?.[i]);   // scikit: min_
 
     const x = Number.isFinite(xi) ? xi : 0;
-    const m = Number.isFinite(mi) ? mi : 0;
     const s = (Number.isFinite(si) && si !== 0) ? si : 1;
+    const m = Number.isFinite(mi) ? mi : 0;
 
-    out[i] = (x - m) * s;
-  }
+    // scikit MinMaxScaler form: X_scaled = X * scale_ + min_
+    out[i] = x * s + m;
 
-  for (let i = 0; i < out.length; i++) {
-    if (!Number.isFinite(out[i])) {
-      console.warn('[RF] normalize produced non-finite at index', i,
-                   'x=', input[i], 'min=', scalerMin?.[i], 'scale=', scalerScale?.[i]);
-      out[i] = 0;
-    }
+    if (!Number.isFinite(out[i])) out[i] = 0;
   }
-  return out; // IMPORTANT
+  return out;
 }
 
 /* async function loadRandomForestModel() {
@@ -734,61 +732,110 @@ function softSigmoid(v, gain) { // Soft sigmoid function to map gaze values to s
     // maps -1…+1 to ~-1…+1 but flattens near 0
     return v / (1 + Math.abs(v) * gain);
 }
-function getModelPrediction(leftEyeIris, rightEyeIris, video) {
-     if (!RF) return { modelDx: 0, modelDy: 0 };
-
-  const vw = video.videoWidth;
-  const vh = video.videoHeight;
-
-  // Base features (normalized iris centers)
-  const f4 = [
-    leftEyeIris.x / vw,
-    leftEyeIris.y / vh,
-    rightEyeIris.x / vw,
-    rightEyeIris.y / vh
-  ];
-
-  // Extended features (if scaler expects more)
-  const dx = (rightEyeIris.x - leftEyeIris.x) / vw;
-  const dy = (rightEyeIris.y - leftEyeIris.y) / vh;
-  const mid_x = (leftEyeIris.x + rightEyeIris.x) / (2 * vw);
-  const mid_y = (leftEyeIris.y + rightEyeIris.y) / (2 * vh);
-  const f8 = [...f4, dx, dy, mid_x, mid_y];
-
-  // Your JSON shows: scaler fields are 'scaler_min' and 'scaler_scale'
-  const sMin   = RF.scaler_min;
-  const sScale = RF.scaler_scale;
-
-  // Choose feature vector that matches scaler length
-  let feats = f4;
-  if (Array.isArray(sMin) && sMin.length === 8) feats = f8;
-  else if (Array.isArray(sMin) && sMin.length !== 4) feats = f8.slice(0, sMin.length);
-
-  // Normalize if scaler present
-  let x = feats;
-  if (Array.isArray(sMin) && Array.isArray(sScale) &&
-      sMin.length === x.length && sScale.length === x.length) {
-    x = normalizeInput(x, sMin, sScale);
+////////////
+// Try both common scaler formulas and choose the one that makes features "look" like 0..1
+function autoNormalize(input, scalerMin, scalerScale) {
+  function normA(x) { // scikit MinMax: X_scaled = X * scale_ + min_
+    const out = new Array(x.length);
+    for (let i = 0; i < x.length; i++) {
+      const xi = Number(x[i]);
+      const si = Number(scalerScale?.[i]);
+      const mi = Number(scalerMin?.[i]);
+      const X = Number.isFinite(xi) ? xi : 0;
+      const s = (Number.isFinite(si) && si !== 0) ? si : 1;
+      const m = Number.isFinite(mi) ? mi : 0;
+      out[i] = X * s + m;
+      if (!Number.isFinite(out[i])) out[i] = 0;
+    }
+    return out;
   }
-console.log('[RF] featlen:', Array.isArray(x) ? x.length : x,
-            'expected:', RF.n_features,
-            'scalerLen:', Array.isArray(RF.scaler_min) ? RF.scaler_min.length : 'n/a');
-  // Predict [x_norm, y_norm]
-  console.log("Input to RF (features):", x);
-console.log("Number of trees in RF:", RF.trees ? RF.trees.length : "none");
+  function normB(x) { // alt export: X_scaled = (X - data_min_) * scale_
+    const out = new Array(x.length);
+    for (let i = 0; i < x.length; i++) {
+      const xi = Number(x[i]);
+      const mi = Number(scalerMin?.[i]);
+      const si = Number(scalerScale?.[i]);
+      const X = Number.isFinite(xi) ? xi : 0;
+      const m = Number.isFinite(mi) ? mi : 0;
+      const s = (Number.isFinite(si) && si !== 0) ? si : 1;
+      out[i] = (X - m) * s;
+      if (!Number.isFinite(out[i])) out[i] = 0;
+    }
+    return out;
+  }
+  function score(arr) {
+    // score how many features land roughly inside [-0.2, 1.2]
+    let ok = 0, fin = 0;
+    for (const v of arr) {
+      if (Number.isFinite(v)) {
+        fin++;
+        if (v >= -0.2 && v <= 1.2) ok++;
+      }
+    }
+    return ok / (fin || 1);
+  }
+  const A = normA(input), sA = score(A);
+  const B = normB(input), sB = score(B);
+  const out = sA >= sB ? A : B;
+  if (!window.__rfNormChoiceLogged) {
+    console.log('[RFdiag] normalizer chosen:',
+      sA >= sB ? 'A: X*scale+min' : 'B: (X-min)*scale',
+      'scores:', sA.toFixed(2), sB.toFixed(2),
+      'sample:', out.map(v => +v.toFixed(3))
+    );
+    window.__rfNormChoiceLogged = true;
+  }
+  return out;
+}
 
-  const [predX, predY] = predictRandomForest(RF, x);
+/////////////
 
-   console.log(predX , predY);
-   console.log(predX* window.innerWidth) ;
-    console.log(predY * window.innerHeight);
+function getModelPrediction(leftEyeIris, rightEyeIris, video) {
+    if (!RF) return { modelDx: 0, modelDy: 0 };
 
-  // Convert normalized coords to pixels
+  const vw = video.videoWidth || 1;
+  const vh = video.videoHeight || 1;
+
+  // normalize iris centers to 0..1 (same as training CSV)
+  let lx = leftEyeIris.x  / vw, ly = leftEyeIris.y  / vh;
+  let rx = rightEyeIris.x / vw, ry = rightEyeIris.y / vh;
+
+  // optional horizontal mirror if training used non-mirrored input
+  if (RF_MIRROR_X) {
+    lx = 1 - lx;
+    rx = 1 - rx;
+  }
+
+  // optional swap if model was trained with the opposite eye order
+  if (RF_SWAP_EYES) {
+    [lx, rx] = [rx, lx];
+    [ly, ry] = [ry, ly];
+  }
+
+  // EXACTLY 4 features, in the order used for training
+  const f4 = [lx, ly, rx, ry];
+
+  // bypass scaler (CSV features were already normalized 0..1); fall back to autoNormalize if you flip the toggle
+  const x = RF_BYPASS_SCALER ? f4 : autoNormalize(f4, RF.scaler_min, RF.scaler_scale);
+
+  // predict normalized coords and clamp to [0,1]
+  const [predXraw, predYraw] = predictRandomForest(RF, x);
+  const clamp01 = v => Math.max(0, Math.min(1, v));
+  const predX = clamp01(predXraw);
+  const predY = clamp01(predYraw);
+
+  // light debug every ~15 frames
+  window.__rfFrame = (window.__rfFrame || 0) + 1;
+  if (window.__rfFrame % 15 === 0) {
+    console.log('[RFdiag] f4:', x.map(v => +v.toFixed(4)),
+                'pred:', +predX.toFixed(3), +predY.toFixed(3));
+  }
+
+  // convert to absolute pixels (model gives absolute pos, not offset)
   return {
     modelDx: predX * window.innerWidth,
     modelDy: predY * window.innerHeight
   };
-
 }
 
 
@@ -842,7 +889,7 @@ function collectCalibrationData(leftEyeIris, rightEyeIris, video) {
 // function to fuse vector and model outputs
 function fuseOutputs(dx, dy, modelDx, modelDy) {
     // Weight: 0 = ML-only, 1 = vector-only
-  const W = 0.7;  // start with 70% vector, 30% ML
+  const W = 0.5;  // now set to 50% vector, 50% ML for a smoother look
 
   // Convert model absolute position -> offsets around screen center
   const cx = window.innerWidth  / 2;
@@ -1334,6 +1381,29 @@ async function loadRandomForestModel() {
     return null;
   }
 }
+////////////
+function inspectModelSchema(RF) {
+  const nTrees = Array.isArray(RF.trees) ? RF.trees.length : 0;
+  let maxFeat = -1;
+  for (const t of RF.trees || []) {
+    for (const fi of t.feature || []) {
+      if (typeof fi === 'number' && fi >= 0) {
+        if (fi > maxFeat) maxFeat = fi;
+      }
+    }
+  }
+  const scalerMinLen = Array.isArray(RF.scaler_min) ? RF.scaler_min.length : 'n/a';
+  const scalerScaleLen = Array.isArray(RF.scaler_scale) ? RF.scaler_scale.length : 'n/a';
+
+  console.log('[RFdiag] n_features (json):', RF.n_features);
+  console.log('[RFdiag] max feature index in trees:', maxFeat, '=> required length:', maxFeat + 1);
+  console.log('[RFdiag] scaler_min len:', scalerMinLen, 'scaler_scale len:', scalerScaleLen);
+  console.log('[RFdiag] #trees:', nTrees);
+}
+
+
+///////////
+
 
 async function main() {
             /* const gazeModel = await loadRandomForestModel();
@@ -1343,6 +1413,7 @@ async function main() {
              }*/
             // TEMP: just to verify JSON is reachable
             await loadForest();
+            inspectModelSchema(RF);   // Added this
             const video = await camera();
             if (!video) return;
             const canvas = createCanvas(video);
