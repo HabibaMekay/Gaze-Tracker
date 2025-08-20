@@ -876,10 +876,13 @@ function collectCalibrationData(leftEyeIris, rightEyeIris, video) {
             right_iris_y: (rightEyeIris.y / videoHeight).toFixed(5),
             gaze_x: currentCalibrationTarget.x.toFixed(0),
             gaze_y: currentCalibrationTarget.y.toFixed(0),
+            target_x: currentCalibrationTarget.x, // Pixel x
+            target_y: currentCalibrationTarget.y, // Pixel y
+            target_x_ratio: currentCalibrationTarget.xRatio.toFixed(5), // Ratio x
+            target_y_ratio: currentCalibrationTarget.yRatio.toFixed(5), //
             screen_width: window.innerWidth,
             screen_height: window.innerHeight,
-            target_x: currentCalibrationTarget.x,
-            target_y: currentCalibrationTarget.y
+
         };
 
         collectedData.push(sample); // Add the sample to the collected data array
@@ -1281,14 +1284,47 @@ function createCanvas(video) {
         // ];
 
         ///// just in case needed:
-        const calibrationPoints = [
-        [0.02, 0.02], [0.25, 0.02], [0.5, 0.02], [0.75, 0.02], [0.98, 0.02],
-        [0.02, 0.25], [0.25, 0.25], [0.5, 0.25], [0.75, 0.25], [0.98, 0.25],
-        [0.02, 0.5],  [0.25, 0.5],  [0.5, 0.5],  [0.75, 0.5],  [0.98, 0.5],
-        [0.02, 0.75], [0.25, 0.75], [0.5, 0.75], [0.75, 0.75], [0.98, 0.75],
-        [0.02, 0.98], [0.25, 0.98], [0.5, 0.98], [0.75, 0.98], [0.98, 0.98]
-        ];
+        // const calibrationPoints = [
+        // [0.02, 0.02], [0.25, 0.02], [0.5, 0.02], [0.75, 0.02], [0.98, 0.02],
+        // [0.02, 0.25], [0.25, 0.25], [0.5, 0.25], [0.75, 0.25], [0.98, 0.25],
+        // [0.02, 0.5],  [0.25, 0.5],  [0.5, 0.5],  [0.75, 0.5],  [0.98, 0.5],
+        // [0.02, 0.75], [0.25, 0.75], [0.5, 0.75], [0.75, 0.75], [0.98, 0.75],
+        // [0.02, 0.98], [0.25, 0.98], [0.5, 0.98], [0.75, 0.98], [0.98, 0.98]
+        // ];
 
+        // replaced the calibration points with a 13x7 grid with 0.02 margin
+
+
+    const gridWidth = 13;
+    const gridHeight = 7;
+    const margin = 0.02;
+    const calibrationPoints = [];
+
+    for (let i = 0; i < gridWidth; i++) {
+    for (let j = 0; j < gridHeight; j++) {
+        const xRatio = margin + (i / (gridWidth - 1)) * (1 - 2 * margin);
+        const yRatio = margin + (j / (gridHeight - 1)) * (1 - 2 * margin);
+        calibrationPoints.push([xRatio, yRatio]);
+    }
+    }
+
+    // add random calibration points in the range [margin, 1 - margin]
+
+
+const numRandomPoints = 200; 
+const allCalibrationPoints = [...calibrationPoints]; // Start with grid points
+
+for (let i = 0; i < numRandomPoints; i++) {
+  const xRatio = margin + Math.random() * (1 - 2 * margin);
+  const yRatio = margin + Math.random() * (1 - 2 * margin);
+  allCalibrationPoints.push([xRatio, yRatio]);
+}
+
+// shuffle the points to mix grid and random points
+for (let i = allCalibrationPoints.length - 1; i > 0; i--) {
+  const j = Math.floor(Math.random() * (i + 1));
+  [allCalibrationPoints[i], allCalibrationPoints[j]] = [allCalibrationPoints[j], allCalibrationPoints[i]];
+}
 
 
         let currentPointIndex = 0; // Index of the current calibration point
@@ -1299,20 +1335,20 @@ function createCanvas(video) {
             document.body.removeChild(dotElement);
             dotElement = null; // clear the old dot before showing the next one
         }
-
-        if (currentPointIndex >= calibrationPoints.length) { // If all calibration points have been shown, finish calibration
+           // replaced the refrence to calibrationpionts to allcalibration points
+        if (currentPointIndex >= allCalibrationPoints.length) { // If all calibration points have been shown, finish calibration
             console.log(" Calibration complete");
             downloadCSV(collectedData); // call the download csv function to save the collected data
             return;
         }
 
-        const [xRatio, yRatio] = calibrationPoints[currentPointIndex]; // takes the next calibration point ratios
+        const [xRatio, yRatio] = allCalibrationPoints[currentPointIndex]; // takes the next calibration point ratios
         const x = window.innerWidth * xRatio; // Calculate the x position based on the ratio and window width
         const y = window.innerHeight * yRatio;
 
         console.log(window.innerWidth+ "   eww  "+ window.innerHeight);
-
-        currentCalibrationTarget = { x, y }; //set red dot position to the current calibration target
+        // added xRatio, yRatio to be stored
+        currentCalibrationTarget = { x, y , xRatio, yRatio}; //set red dot position to the current calibration target
         isCollecting = false; // stop collecting until the next point is shown
 
         dotElement = document.createElement('div'); // Create a new div element for the red dot
@@ -1334,8 +1370,8 @@ function createCanvas(video) {
             isCollecting = false;
             currentPointIndex++; // move to the next point
             showNextCalibrationPoint(); //show next point 
-            }, 3000); // Collect data for 3 seconds at this point
-        }, 1000); // Wait 1 second before starting to collect data
+            }, 1500); // Collect data for 1.5 seconds at this point
+        }, 500); // Wait 0.5 second before starting to collect data
         }
 
     // Temporal filter helper --> to be added////////////
@@ -1424,7 +1460,7 @@ async function main() {
             // magnifier = createMagnifier();
             // magnifierCtx = magnifier.getContext('2d');
             continueDetection(video, detector, canvas, cursor);
-            // showNextCalibrationPoint();
+            showNextCalibrationPoint();
         }
 
 
