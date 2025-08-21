@@ -1,7 +1,9 @@
 let smoothedX = 0, smoothedY = 0;// store the last smoothed gaze position
 const SMOOTHING = 0.1;  ///make this bigger to move the dot more quickly (lighter gaze movements)//// smaller to make it more stable and slow
 let baselineVy = null;
-const GAZE_SENSITIVITY_X = 0.7;  // Horizontal sensitivity
+// const GAZE_SENSITIVITY_X = 0.7;  // Horizontal sensitivity
+const GAZE_SENSITIVITY_RIGHT = 0.7;  // Sensitivity when looking right
+const GAZE_SENSITIVITY_LEFT = 1;
 const GAZE_SENSITIVITY_Y = 1.2; // Higher vertical sensitivity
 const AMPLIFY_RIGHT = 15, AMPLIFY_LEFT = 8; // reversed
 const AMPLIFY_UP = 34, AMPLIFY_DOWN = 15;
@@ -804,7 +806,7 @@ async function continueDetection(video, detector, canvas, cursor) {
 
         if (!isIrisShapeValid(rightIrisPoints) || !isIrisShapeValid(leftIrisPoints)) { // if eye is not circleish skip the frame
             console.warn("Iris shape invalid — skipping frame");
-            requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor, gazeModel)); // Skip the frame if iris shape is not valid
+            requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor)); // Skip the frame if iris shape is not valid
             return;
         }
 
@@ -849,7 +851,8 @@ async function continueDetection(video, detector, canvas, cursor) {
         const temporallySmoothed = temporalFilter(normalizedGazeVector.x, normalizedGazeVector.y);
         const smoothedX = temporallySmoothed.x;
         const smoothedY = temporallySmoothed.y;
-        let dx = smoothedX * window.innerWidth * GAZE_SENSITIVITY_X;
+        const sensitivityX = smoothedX >= 0 ? GAZE_SENSITIVITY_RIGHT : GAZE_SENSITIVITY_LEFT;
+        let dx = smoothedX * window.innerWidth * sensitivityX;
         let dy = smoothedY * window.innerHeight * GAZE_SENSITIVITY_Y * -1; // Invert dy to match screen coordinates, where down is positive
 
         collectCalibrationData(leftEyeIris, rightEyeIris, video);
