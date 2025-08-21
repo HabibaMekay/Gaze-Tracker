@@ -7,6 +7,8 @@
     <title>Gaze Testing Web page </title>
     <link rel="stylesheet" href="./style.css">
     <link rel="icon" href="./favicon.ico" type="image/x-icon">
+    <!-- <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.12.0/dist/tf.min.js"></script> -->
+
   </head>
   <body>
     
@@ -53,30 +55,17 @@
         <a href="#section1">Click Me to Smooth Scroll to Section 1 Above</a>
     </div>
 
-     <!-- WebGazer.js library
 
-    <script src="webgazer.js" type="text/javascript" ></script>
-
-    <script src="script.js"></script> -->
-
-    <!-- loading tensorflow.js and facemesh for tetsing only -->
-    <!-- later we should use web_accessible_resources in the manifest.json file -->
-    
-
-<!-- mediapipe + tenserflow -->
-<!-- Require the peer dependencies of face-landmarks-detection. -->
+<!-- MediaPipe Face Mesh assets -->
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh"></script>
+
+<!-- Minimal TFJS so `tf.Tensor` exists for instanceof checks -->
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
 
-
-<!-- model -->
+<!-- The wrapper model that calls instanceof tf.Tensor internally -->
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-landmarks-detection"></script>
-
-
-<script src="index.js"></script> 
-
-    
+<!-- app code LAST -->
+<script src="./index.js"></script>
+  
   </body>
 </html>
