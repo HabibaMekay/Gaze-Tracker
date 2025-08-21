@@ -102,7 +102,10 @@ def tree_to_dict(tree):
         "children_right": tree.children_right.tolist(),
         "feature": tree.feature.tolist(),
         "threshold": tree.threshold.tolist(),
-        "value": tree.value[:, 0, :].tolist()
+        # "value": tree.value[:, 0, :].tolist()
+        
+        # keep full output vector instead of collapsing
+        "value": tree.value.squeeze(axis=2).tolist() 
     }
 
 forest_data = {

@@ -1,43 +1,153 @@
 //const fs = require('fs').promises; // Comment out for browser
 const fetch = window.fetch;
+///////////////
+// === TEMP: model JSON loader for sanity check ===
+let RF = null;
+const RF_SWAP_EYES = false; // set to true if needed later
+const RF_BYPASS_SCALER = true;   // CSV features were already 0..1
+const RF_MIRROR_X = false;       // start with false; we can flip if needed
+
+async function loadForest() {
+  if (RF) return RF;
+  try {
+    // since index.html is in test-webpage/, the relative path is:
+    const res = await fetch('./final_model/random_forest.json');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    RF = await res.json();
+
+    // Log a few keys so we know it loaded correctly
+    const keys = Object.keys(RF);
+    console.log('[RF] loaded. top-level keys:', keys);
+
+    // If your export has these, log some quick stats:
+    if (RF.scaler?.mean_?.length) {
+      console.log('[RF] scaler mean length:', RF.scaler.mean_.length);
+    }
+    if (Array.isArray(RF.trees)) {
+      console.log('[RF] number of trees:', RF.trees.length);
+      // peek at first tree’s keys if available
+      if (RF.trees[0]) {
+        console.log('[RF] first tree keys:', Object.keys(RF.trees[0]));
+      }
+    }
+  } catch (e) {
+    console.error('[RF] failed to load random_forest.json:', e);
+  }
+  return RF;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+///////////////
+
+
+
+
+
 
 // Random Forest prediction functions
 function predictTree(tree, input) {
-  function traverse(nodeIndex, input) {
-    if (tree.children_left[nodeIndex] === -1 && tree.children_right[nodeIndex] === -1) {
-      return tree.value[nodeIndex]; // Return [x, y] normalized coordinates
+  // If input is missing, be safe
+  if (!Array.isArray(input)) return [0, 0];
+
+  let node = 0;
+  const cl = tree.children_left, cr = tree.children_right;
+  const f  = tree.feature,        thr = tree.threshold;
+
+  while (cl[node] !== -1 && cr[node] !== -1) {
+    const featIdx = f[node];
+    // If feature index is out of bounds or value is non-finite, go left by default
+    let goLeft = true;
+    if (Number.isInteger(featIdx) && featIdx >= 0 && featIdx < input.length) {
+      const val = input[featIdx];
+      goLeft = Number.isFinite(val) ? (val <= thr[node]) : true;
     }
-    const feature = tree.feature[nodeIndex];
-    const threshold = tree.threshold[nodeIndex];
-    return input[feature] <= threshold
-      ? traverse(tree.children_left[nodeIndex], input)
-      : traverse(tree.children_right[nodeIndex], input);
+    node = goLeft ? cl[node] : cr[node];
   }
-  return traverse(0, input);
+
+  // leaf value might be [[x,y]] or [x,y]; make it numeric
+  let v = tree.value[node];
+  if (Array.isArray(v) && Array.isArray(v[0])) v = v[0];
+
+  const x = Number(v?.[0]);
+  const y = Number(v?.[1]);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    console.warn('[RF] Non-finite leaf value at node', node, 'value:', v);
+    return [0, 0];
+  }
+  return [x, y];
 }
+
+// function predictRandomForest(model, input) {
+//   let sumPred = [0, 0];
+//   for (const tree of model.trees) {
+//     const pred = predictTree(tree, input);
+//     sumPred[0] += pred[0];
+//     sumPred[1] += pred[1];
+//   }
+//   return [
+//     sumPred[0] / model.n_estimators,
+//     sumPred[1] / model.n_estimators
+//   ];
+// }
+
+// commneted it out for debugging 
 
 function predictRandomForest(model, input) {
   let sumPred = [0, 0];
-  for (const tree of model.trees) {
+
+  model.trees.forEach((tree, idx) => {
     const pred = predictTree(tree, input);
+    console.log("Tree", idx, "prediction:", pred);  // 🔍 log each tree output
     sumPred[0] += pred[0];
     sumPred[1] += pred[1];
-  }
-  return [
+  });
+
+  const avgPred = [
     sumPred[0] / model.n_estimators,
     sumPred[1] / model.n_estimators
   ];
+
+  console.log("Average prediction:", avgPred); // 🔍 log the average too
+  return avgPred;
 }
+
+
+
+
+
+
 
 function normalizeInput(input, scalerMin, scalerScale) {
-  const normalized = [];
+   const out = new Array(input.length);
   for (let i = 0; i < input.length; i++) {
-    normalized[i] = (input[i] - scalerMin[i]) * scalerScale[i];
+    const xi = Number(input[i]);
+    const si = Number(scalerScale?.[i]); // scikit: scale_
+    const mi = Number(scalerMin?.[i]);   // scikit: min_
+
+    const x = Number.isFinite(xi) ? xi : 0;
+    const s = (Number.isFinite(si) && si !== 0) ? si : 1;
+    const m = Number.isFinite(mi) ? mi : 0;
+
+    // scikit MinMaxScaler form: X_scaled = X * scale_ + min_
+    out[i] = x * s + m;
+
+    if (!Number.isFinite(out[i])) out[i] = 0;
   }
-  return normalized;
+  return out;
 }
 
-async function loadRandomForestModel() {
+/* async function loadRandomForestModel() {
   try {
     // For Node.js
     // const modelData = await fs.readFile('./model_rf/random_forest.json', 'utf8');
@@ -49,7 +159,7 @@ async function loadRandomForestModel() {
     console.error('Error loading Random Forest model:', error);
     return null;
   }
-}
+} */
 
 
 
@@ -622,28 +732,114 @@ function softSigmoid(v, gain) { // Soft sigmoid function to map gaze values to s
     // maps -1…+1 to ~-1…+1 but flattens near 0
     return v / (1 + Math.abs(v) * gain);
 }
-function getModelPrediction(leftEyeIris, rightEyeIris, video, gazeModel) {
-    // FOR THE MODEL
-    const videoWidth = video.videoWidth; // Get the video width to normalize coordinates to
-    const videoHeight = video.videoHeight; // Get the video height
-
-    const inputTensor = tf.tensor2d([[
-        leftEyeIris.x / videoWidth,
-        leftEyeIris.y / videoHeight,
-        rightEyeIris.x / videoWidth,
-        rightEyeIris.y / videoHeight
-    ]]);
-
-    const prediction = gazeModel.predict(inputTensor);
-    const [predX, predY] = prediction.dataSync(); // These are in 0–1 normalized screen coordinates
-    inputTensor.dispose();
-    prediction.dispose();
-
-    return {
-        modelDx: predX * window.innerWidth,
-        modelDy: predY * window.innerHeight
-    };
+////////////
+// Try both common scaler formulas and choose the one that makes features "look" like 0..1
+function autoNormalize(input, scalerMin, scalerScale) {
+  function normA(x) { // scikit MinMax: X_scaled = X * scale_ + min_
+    const out = new Array(x.length);
+    for (let i = 0; i < x.length; i++) {
+      const xi = Number(x[i]);
+      const si = Number(scalerScale?.[i]);
+      const mi = Number(scalerMin?.[i]);
+      const X = Number.isFinite(xi) ? xi : 0;
+      const s = (Number.isFinite(si) && si !== 0) ? si : 1;
+      const m = Number.isFinite(mi) ? mi : 0;
+      out[i] = X * s + m;
+      if (!Number.isFinite(out[i])) out[i] = 0;
+    }
+    return out;
+  }
+  function normB(x) { // alt export: X_scaled = (X - data_min_) * scale_
+    const out = new Array(x.length);
+    for (let i = 0; i < x.length; i++) {
+      const xi = Number(x[i]);
+      const mi = Number(scalerMin?.[i]);
+      const si = Number(scalerScale?.[i]);
+      const X = Number.isFinite(xi) ? xi : 0;
+      const m = Number.isFinite(mi) ? mi : 0;
+      const s = (Number.isFinite(si) && si !== 0) ? si : 1;
+      out[i] = (X - m) * s;
+      if (!Number.isFinite(out[i])) out[i] = 0;
+    }
+    return out;
+  }
+  function score(arr) {
+    // score how many features land roughly inside [-0.2, 1.2]
+    let ok = 0, fin = 0;
+    for (const v of arr) {
+      if (Number.isFinite(v)) {
+        fin++;
+        if (v >= -0.2 && v <= 1.2) ok++;
+      }
+    }
+    return ok / (fin || 1);
+  }
+  const A = normA(input), sA = score(A);
+  const B = normB(input), sB = score(B);
+  const out = sA >= sB ? A : B;
+  if (!window.__rfNormChoiceLogged) {
+    console.log('[RFdiag] normalizer chosen:',
+      sA >= sB ? 'A: X*scale+min' : 'B: (X-min)*scale',
+      'scores:', sA.toFixed(2), sB.toFixed(2),
+      'sample:', out.map(v => +v.toFixed(3))
+    );
+    window.__rfNormChoiceLogged = true;
+  }
+  return out;
 }
+
+/////////////
+
+function getModelPrediction(leftEyeIris, rightEyeIris, video) {
+    if (!RF) return { modelDx: 0, modelDy: 0 };
+
+  const vw = video.videoWidth || 1;
+  const vh = video.videoHeight || 1;
+
+  // normalize iris centers to 0..1 (same as training CSV)
+  let lx = leftEyeIris.x  / vw, ly = leftEyeIris.y  / vh;
+  let rx = rightEyeIris.x / vw, ry = rightEyeIris.y / vh;
+
+  // optional horizontal mirror if training used non-mirrored input
+  if (RF_MIRROR_X) {
+    lx = 1 - lx;
+    rx = 1 - rx;
+  }
+
+  // optional swap if model was trained with the opposite eye order
+  if (RF_SWAP_EYES) {
+    [lx, rx] = [rx, lx];
+    [ly, ry] = [ry, ly];
+  }
+
+  // EXACTLY 4 features, in the order used for training
+  const f4 = [lx, ly, rx, ry];
+
+  // bypass scaler (CSV features were already normalized 0..1); fall back to autoNormalize if you flip the toggle
+  const x = RF_BYPASS_SCALER ? f4 : autoNormalize(f4, RF.scaler_min, RF.scaler_scale);
+
+  // predict normalized coords and clamp to [0,1]
+  const [predXraw, predYraw] = predictRandomForest(RF, x);
+  const clamp01 = v => Math.max(0, Math.min(1, v));
+  const predX = clamp01(predXraw);
+  const predY = clamp01(predYraw);
+
+  // light debug every ~15 frames
+  window.__rfFrame = (window.__rfFrame || 0) + 1;
+  if (window.__rfFrame % 15 === 0) {
+    console.log('[RFdiag] f4:', x.map(v => +v.toFixed(4)),
+                'pred:', +predX.toFixed(3), +predY.toFixed(3));
+  }
+
+  // convert to absolute pixels (model gives absolute pos, not offset)
+  return {
+    modelDx: predX * window.innerWidth,
+    modelDy: predY * window.innerHeight
+  };
+}
+
+
+
 // // function to get model prediction
 // function getModelPrediction(leftEyeIris, rightEyeIris, video, model) {
 //   const videoWidth = video.videoWidth;
@@ -680,10 +876,13 @@ function collectCalibrationData(leftEyeIris, rightEyeIris, video) {
             right_iris_y: (rightEyeIris.y / videoHeight).toFixed(5),
             gaze_x: currentCalibrationTarget.x.toFixed(0),
             gaze_y: currentCalibrationTarget.y.toFixed(0),
+            target_x: currentCalibrationTarget.x, // Pixel x
+            target_y: currentCalibrationTarget.y, // Pixel y
+            target_x_ratio: currentCalibrationTarget.xRatio.toFixed(5), // Ratio x
+            target_y_ratio: currentCalibrationTarget.yRatio.toFixed(5), //
             screen_width: window.innerWidth,
             screen_height: window.innerHeight,
-            target_x: currentCalibrationTarget.x,
-            target_y: currentCalibrationTarget.y
+
         };
 
         collectedData.push(sample); // Add the sample to the collected data array
@@ -692,19 +891,24 @@ function collectCalibrationData(leftEyeIris, rightEyeIris, video) {
 
 // function to fuse vector and model outputs
 function fuseOutputs(dx, dy, modelDx, modelDy) {
-    // FOR THE MODEL
-    const FUSION_WEIGHT = 1; // tune between 0 (ML only) to 1 (vector only)
-    // the problem here that dx -> move 200 px from center while modelDx -> gives pixel 15200 on screen
-    // aka dx -> how far you should move (relative offset), modelDx -> a position on the screen(Absolute position)
-    // so we need to fuse them in a way that they are comparable
-    // because these are different units
-    const centerX = window.innerWidth / 2; // center of the screen
-    const centerY = window.innerHeight / 2;
+    // Weight: 0 = ML-only, 1 = vector-only
+  const W = 0.5;  // now set to 50% vector, 50% ML for a smoother look
 
-    const fusedDx = FUSION_WEIGHT * dx + (1 - FUSION_WEIGHT) * modelDx;
-    const fusedDy = FUSION_WEIGHT * dy + (1 - FUSION_WEIGHT) * modelDy;
+  // Convert model absolute position -> offsets around screen center
+  const cx = window.innerWidth  / 2;
+  const cy = window.innerHeight / 2;
+  let mdx = modelDx - cx;
+  let mdy = modelDy - cy;
 
-    return { fusedDx, fusedDy };
+  // Optional: clamp model offsets to avoid sudden jumps
+  const clamp = (v, lim) => Math.max(-lim, Math.min(lim, v));
+  mdx = clamp(mdx, 0.9 * cx);
+  mdy = clamp(mdy, 0.9 * cy);
+
+  const fusedDx = W * dx + (1 - W) * mdx;
+  const fusedDy = W * dy + (1 - W) * mdy;
+
+  return { fusedDx, fusedDy };
 }
 
 // function to position cursor
@@ -900,7 +1104,7 @@ async function updateMagnifier(magnifier, magnifierCtx, clampedX, clampedY, curs
 }
 
 // Main async function refactored with original comments
-async function continueDetection(video, detector, canvas, cursor, gazeModel) {
+async function continueDetection(video, detector, canvas, cursor) {
     const face = await detector.estimateFaces(video);
     const ctx = canvas.getContext('2d');
     //////////////////// FOR THE MODEL ///////////////////////
@@ -913,7 +1117,7 @@ async function continueDetection(video, detector, canvas, cursor, gazeModel) {
     if (face.length > 0) {
         if (face[0].faceInViewConfidence !== undefined && face[0].faceInViewConfidence < 0.99) {
             console.warn("Low confidence — skipping frame"); // if confidence is low, skip the frame // maybe add a warning or make users refresh the page
-            requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor, gazeModel));
+            requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor));
             return;
         }
         console.log('Face detected:', face[0]);
@@ -928,7 +1132,7 @@ async function continueDetection(video, detector, canvas, cursor, gazeModel) {
 
         if (!isIrisShapeValid(rightIrisPoints) || !isIrisShapeValid(leftIrisPoints)) { // if eye is not circleish skip the frame
             console.warn("Iris shape invalid — skipping frame");
-            requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor, gazeModel)); // Skip the frame if iris shape is not valid
+            requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor)); // Skip the frame if iris shape is not valid
             return;
         }
 
@@ -940,12 +1144,8 @@ async function continueDetection(video, detector, canvas, cursor, gazeModel) {
         const { Vx, Vy, L, H, noseBridge, nosetip } = normalizeGazeVector(gazeVector, keypoints);
 
         // For the head frame
-        const isInsideHeadFrame = drawCircleFrame(ctx, nosetip, leftEyeInnerCorner, rightEyeInnerCorner, canvas);
-        if (!isInsideHeadFrame) { // If the nose tip is outside the head frame, skip the frame
-            console.warn("Nose tip outside head frame — skipping frame");
-            requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor, gazeModel));
-            return;
-        } // End of head frame
+        // For the head frame — draw only, do not gate
+       drawCircleFrame(ctx, nosetip, leftEyeInnerCorner, rightEyeInnerCorner, canvas);
 
         // Debugging
         console.log('Left Eye Iris:', leftEyeIris);
@@ -978,11 +1178,11 @@ async function continueDetection(video, detector, canvas, cursor, gazeModel) {
 
         collectCalibrationData(leftEyeIris, rightEyeIris, video);
 
-        const { modelDx: predModelDx, modelDy: predModelDy } = getModelPrediction(leftEyeIris, rightEyeIris, video, gazeModel);
+        const { modelDx: predModelDx, modelDy: predModelDy } = getModelPrediction(leftEyeIris, rightEyeIris, video);
         modelDx = predModelDx;
         modelDy = predModelDy;
         // debugging the model
-        console.log("ML Prediction:", { modelDx, modelDy });
+        // console.log("ML Prediction:", { modelDx, modelDy });
 
         const { fusedDx, fusedDy } = fuseOutputs(dx, dy, modelDx, modelDy);
 
@@ -1000,7 +1200,7 @@ async function continueDetection(video, detector, canvas, cursor, gazeModel) {
         console.log('No face detected');
     }
 
-    requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor, gazeModel)); // Call the function again for continuous detection
+    requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor)); // Call the function again for continuous detection
 }
 
 
@@ -1052,6 +1252,83 @@ function createCanvas(video) {
         return cursor;
     }
 
+ // Function to generate synthetic gaze data for model training
+    function generateSyntheticGazeData(numUsers, pointsPerUser, screenWidth, screenHeight) {
+    const margin = 0.02;
+    const syntheticData = [];
+    
+    // Reuse calibration points logic
+    const gridWidth = 13;
+    const gridHeight = 7;
+    const numRandomPoints = 200;
+    const calibrationPoints = [];
+
+    // Generate grid points
+    for (let i = 0; i < gridWidth; i++) {
+        for (let j = 0; j < gridHeight; j++) {
+            const xRatio = margin + (i / (gridWidth - 1)) * (1 - 2 * margin);
+            const yRatio = margin + (j / (gridHeight - 1)) * (1 - 2 * margin);
+            calibrationPoints.push([xRatio, yRatio]);
+        }
+    }
+
+    // Add random points
+    for (let i = 0; i < numRandomPoints; i++) {
+        const xRatio = margin + Math.random() * (1 - 2 * margin);
+        const yRatio = margin + Math.random() * (1 - 2 * margin);
+        calibrationPoints.push([xRatio, yRatio]);
+    }
+
+    // Shuffle points
+    for (let i = calibrationPoints.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [calibrationPoints[i], calibrationPoints[j]] = [calibrationPoints[j], calibrationPoints[i]];
+    }
+
+    for (let user = 0; user < numUsers; user++) {
+        const userBiasX = (Math.random() - 0.5) * 0.05;
+        const userBiasY = (Math.random() - 0.5) * 0.05;
+        const noiseStdDev = 0.03 + Math.random() * 0.02;
+        const videoWidth = 1280;
+        const videoHeight = 720;
+
+        for (let i = 0; i < Math.min(pointsPerUser, calibrationPoints.length); i++) {
+            const [targetXRatio, targetYRatio] = calibrationPoints[i];
+            const targetX = targetXRatio * screenWidth;
+            const targetY = targetYRatio * screenHeight;
+
+            const leftIrisX = (targetXRatio + userBiasX + (Math.random() - 0.5) * noiseStdDev) * videoWidth;
+            const leftIrisY = (targetYRatio + userBiasY + (Math.random() - 0.5) * noiseStdDev) * videoHeight;
+            const rightIrisX = (targetXRatio + userBiasX + (Math.random() - 0.5) * noiseStdDev) * videoWidth;
+            const rightIrisY = (targetYRatio + userBiasY + (Math.random() - 0.5) * noiseStdDev) * videoHeight;
+
+            const timestamp = Date.now() - Math.floor(Math.random() * 3600 * 1000);
+
+            const sample = {
+                timestamp,
+                left_iris_x: (leftIrisX / videoWidth).toFixed(5),
+                left_iris_y: (leftIrisY / videoHeight).toFixed(5),
+                right_iris_x: (rightIrisX / videoWidth).toFixed(5),
+                right_iris_y: (rightIrisY / videoHeight).toFixed(5),
+                gaze_x: Math.round(targetX),
+                gaze_y: Math.round(targetY),
+                target_x: targetX,
+                target_y: targetY,
+                target_x_ratio: targetXRatio.toFixed(5),
+                target_y_ratio: targetYRatio.toFixed(5),
+                screen_width: screenWidth,
+                screen_height: screenHeight,
+                user_id: user,
+                is_synthetic: 1
+            };
+
+            syntheticData.push(sample);
+        }
+    }
+
+    return syntheticData;
+}
+
     function downloadCSV(data) { // Function to download collected gaze data as a CSV file to train on it later
         if (data.length === 0) { 
             alert("No data to download");
@@ -1084,63 +1361,142 @@ function createCanvas(video) {
         // ];
 
         ///// just in case needed:
-        const calibrationPoints = [
-        [0.02, 0.02], [0.25, 0.02], [0.5, 0.02], [0.75, 0.02], [0.98, 0.02],
-        [0.02, 0.25], [0.25, 0.25], [0.5, 0.25], [0.75, 0.25], [0.98, 0.25],
-        [0.02, 0.5],  [0.25, 0.5],  [0.5, 0.5],  [0.75, 0.5],  [0.98, 0.5],
-        [0.02, 0.75], [0.25, 0.75], [0.5, 0.75], [0.75, 0.75], [0.98, 0.75],
-        [0.02, 0.98], [0.25, 0.98], [0.5, 0.98], [0.75, 0.98], [0.98, 0.98]
-        ];
+        // const calibrationPoints = [
+        // [0.02, 0.02], [0.25, 0.02], [0.5, 0.02], [0.75, 0.02], [0.98, 0.02],
+        // [0.02, 0.25], [0.25, 0.25], [0.5, 0.25], [0.75, 0.25], [0.98, 0.25],
+        // [0.02, 0.5],  [0.25, 0.5],  [0.5, 0.5],  [0.75, 0.5],  [0.98, 0.5],
+        // [0.02, 0.75], [0.25, 0.75], [0.5, 0.75], [0.75, 0.75], [0.98, 0.75],
+        // [0.02, 0.98], [0.25, 0.98], [0.5, 0.98], [0.75, 0.98], [0.98, 0.98]
+        // ];
 
+        // replaced the calibration points with a 13x7 grid with 0.02 margin
+
+
+    const gridWidth = 13;
+    const gridHeight = 7;
+    const margin = 0.02;
+    const calibrationPoints = [];
+
+    for (let i = 0; i < gridWidth; i++) {
+    for (let j = 0; j < gridHeight; j++) {
+        const xRatio = margin + (i / (gridWidth - 1)) * (1 - 2 * margin);
+        const yRatio = margin + (j / (gridHeight - 1)) * (1 - 2 * margin);
+        calibrationPoints.push([xRatio, yRatio]);
+    }
+    }
+
+    // add random calibration points in the range [margin, 1 - margin]
+
+
+const numRandomPoints = 200; 
+const allCalibrationPoints = [...calibrationPoints]; // Start with grid points
+
+for (let i = 0; i < numRandomPoints; i++) {
+  const xRatio = margin + Math.random() * (1 - 2 * margin);
+  const yRatio = margin + Math.random() * (1 - 2 * margin);
+  allCalibrationPoints.push([xRatio, yRatio]);
+}
+
+// shuffle the points to mix grid and random points
+for (let i = allCalibrationPoints.length - 1; i > 0; i--) {
+  const j = Math.floor(Math.random() * (i + 1));
+  [allCalibrationPoints[i], allCalibrationPoints[j]] = [allCalibrationPoints[j], allCalibrationPoints[i]];
+}
 
 
         let currentPointIndex = 0; // Index of the current calibration point
         let dotElement = null; // Element to display the red dot
 
-        function showNextCalibrationPoint() { // Function to show the next calibration point
-        if (dotElement) { // If a dot is already displayed, remove it
-            document.body.removeChild(dotElement);
-            dotElement = null; // clear the old dot before showing the next one
-        }
+        // function showNextCalibrationPoint() { // Function to show the next calibration point
+        // if (dotElement) { // If a dot is already displayed, remove it
+        //     document.body.removeChild(dotElement);
+        //     dotElement = null; // clear the old dot before showing the next one
+        // }
+        //    // replaced the refrence to calibrationpionts to allcalibration points
+        // if (currentPointIndex >= allCalibrationPoints.length) { // If all calibration points have been shown, finish calibration
+        //     console.log(" Calibration complete");
+        //     downloadCSV(collectedData); // call the download csv function to save the collected data
+        //     return;
+        // }
 
-        if (currentPointIndex >= calibrationPoints.length) { // If all calibration points have been shown, finish calibration
-            console.log(" Calibration complete");
-            downloadCSV(collectedData); // call the download csv function to save the collected data
-            return;
-        }
+        // const [xRatio, yRatio] = allCalibrationPoints[currentPointIndex]; // takes the next calibration point ratios
+        // const x = window.innerWidth * xRatio; // Calculate the x position based on the ratio and window width
+        // const y = window.innerHeight * yRatio;
 
-        const [xRatio, yRatio] = calibrationPoints[currentPointIndex]; // takes the next calibration point ratios
-        const x = window.innerWidth * xRatio; // Calculate the x position based on the ratio and window width
-        const y = window.innerHeight * yRatio;
+        // console.log(window.innerWidth+ "   eww  "+ window.innerHeight);
+        // // added xRatio, yRatio to be stored
+        // currentCalibrationTarget = { x, y , xRatio, yRatio}; //set red dot position to the current calibration target
+        // isCollecting = false; // stop collecting until the next point is shown
 
-        console.log(window.innerWidth+ "   eww  "+ window.innerHeight);
+        // dotElement = document.createElement('div'); // Create a new div element for the red dot
+        // dotElement.style.position = 'fixed';
+        // dotElement.style.left = `${x - 10}px`;
+        // dotElement.style.top = `${y - 10}px`; // subtract 10 to center the dot
+        // dotElement.style.width = '20px';
+        // dotElement.style.height = '20px';
+        // dotElement.style.backgroundColor = 'black';
+        // dotElement.style.borderRadius = '50%';
+        // dotElement.style.zIndex = 3000;
+        // document.body.appendChild(dotElement); // Append the dot to the body
 
-        currentCalibrationTarget = { x, y }; //set red dot position to the current calibration target
-        isCollecting = false; // stop collecting until the next point is shown
+        // // Wait 1 second, then collect for 3 seconds
+        // setTimeout(() => {
+        //     isCollecting = true; 
+        //     console.log(` Collecting at point ${currentPointIndex + 1}`); // because index starts at 0
+        //     setTimeout(() => {
+        //     isCollecting = false;
+        //     currentPointIndex++; // move to the next point
+        //     showNextCalibrationPoint(); //show next point 
+        //     }, 1500); // Collect data for 1.5 seconds at this point
+        // }, 500); // Wait 0.5 second before starting to collect data
+        // }
 
-        dotElement = document.createElement('div'); // Create a new div element for the red dot
-        dotElement.style.position = 'fixed';
-        dotElement.style.left = `${x - 10}px`;
-        dotElement.style.top = `${y - 10}px`; // subtract 10 to center the dot
-        dotElement.style.width = '20px';
-        dotElement.style.height = '20px';
-        dotElement.style.backgroundColor = 'black';
-        dotElement.style.borderRadius = '50%';
-        dotElement.style.zIndex = 3000;
-        document.body.appendChild(dotElement); // Append the dot to the body
+//////added the synthetic data to the calibration points    
+function showNextCalibrationPoint(syntheticData = []) {
+    if (dotElement) {
+        document.body.removeChild(dotElement);
+        dotElement = null;
+    }
 
-        // Wait 1 second, then collect for 3 seconds
+    if (currentPointIndex >= allCalibrationPoints.length) {
+        console.log("Calibration complete");
+        // Add is_synthetic flag to real data
+        collectedData.forEach(sample => sample.is_synthetic = 0);
+        // Combine real and synthetic data
+        const combinedData = [...collectedData, ...syntheticData];
+        console.log('[Data] Combined:', combinedData.length, 'samples (Real:', collectedData.length, ', Synthetic:', syntheticData.length, ')');
+        downloadCSV(combinedData);
+        return;
+    }
+
+    const [xRatio, yRatio] = allCalibrationPoints[currentPointIndex];
+    const x = window.innerWidth * xRatio;
+    const y = window.innerHeight * yRatio;
+
+    currentCalibrationTarget = { x, y, xRatio, yRatio };
+    isCollecting = false;
+
+    dotElement = document.createElement('div');
+    dotElement.style.position = 'fixed';
+    dotElement.style.left = `${x - 10}px`;
+    dotElement.style.top = `${y - 10}px`;
+    dotElement.style.width = '20px';
+    dotElement.style.height = '20px';
+    dotElement.style.backgroundColor = 'black';
+    dotElement.style.borderRadius = '50%';
+    dotElement.style.zIndex = 3000;
+    document.body.appendChild(dotElement);
+
+    setTimeout(() => {
+        isCollecting = true;
+        console.log(`Collecting at point ${currentPointIndex + 1}`);
         setTimeout(() => {
-            isCollecting = true; 
-            console.log(` Collecting at point ${currentPointIndex + 1}`); // because index starts at 0
-            setTimeout(() => {
             isCollecting = false;
-            currentPointIndex++; // move to the next point
-            showNextCalibrationPoint(); //show next point 
-            }, 3000); // Collect data for 3 seconds at this point
-        }, 1000); // Wait 1 second before starting to collect data
-        }
-
+            currentPointIndex++;
+            showNextCalibrationPoint(syntheticData);
+        }, 1500);
+    }, 500);
+}
     // Temporal filter helper --> to be added////////////
     const sliding_window = 500; //sliding window length -> keep all gaze samples from last half second
     const slidingWindows = []; // to store gaze x, gaze y and timestamp
@@ -1175,27 +1531,48 @@ function createCanvas(video) {
 
 
 async function loadRandomForestModel() {
-  try {
-    const response = await fetch('final_model/random_forest.json');
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    const model = await response.json();
-    console.log('Loaded model:', model);
-    if (!model.scaler_min || !model.scaler_scale) {
-      throw new Error('Model missing scaler_min or scaler_scale');
-    }
-    return model;
+   try {
+    // Browser path
+    const response = await fetch('./final_model/random_forest.json');
+    return await response.json();
   } catch (error) {
     console.error('Error loading Random Forest model:', error);
     return null;
   }
 }
+////////////
+function inspectModelSchema(RF) {
+  const nTrees = Array.isArray(RF.trees) ? RF.trees.length : 0;
+  let maxFeat = -1;
+  for (const t of RF.trees || []) {
+    for (const fi of t.feature || []) {
+      if (typeof fi === 'number' && fi >= 0) {
+        if (fi > maxFeat) maxFeat = fi;
+      }
+    }
+  }
+  const scalerMinLen = Array.isArray(RF.scaler_min) ? RF.scaler_min.length : 'n/a';
+  const scalerScaleLen = Array.isArray(RF.scaler_scale) ? RF.scaler_scale.length : 'n/a';
+
+  console.log('[RFdiag] n_features (json):', RF.n_features);
+  console.log('[RFdiag] max feature index in trees:', maxFeat, '=> required length:', maxFeat + 1);
+  console.log('[RFdiag] scaler_min len:', scalerMinLen, 'scaler_scale len:', scalerScaleLen);
+  console.log('[RFdiag] #trees:', nTrees);
+}
+
+
+///////////
+
 
 async function main() {
-            const gazeModel = await loadRandomForestModel();
+            /* const gazeModel = await loadRandomForestModel();
             if (!gazeModel) {
                 alert('Failed to load Random Forest model. Check console for details.');
                 return;
-            }
+             }*/
+            // TEMP: just to verify JSON is reachable
+            await loadForest();
+            inspectModelSchema(RF);   // Added this
             const video = await camera();
             if (!video) return;
             const canvas = createCanvas(video);
@@ -1203,10 +1580,12 @@ async function main() {
             if (!detector) return;
             const cursor = createCursor();
             createHeatMapLayer();
+             const syntheticData = generateSyntheticGazeData(50, 291, window.innerWidth, window.innerHeight);
+             console.log('[Synthetic Data] Generated:', syntheticData.length, 'samples');
             // magnifier = createMagnifier();
             // magnifierCtx = magnifier.getContext('2d');
-            continueDetection(video, detector, canvas, cursor, gazeModel);
-            // showNextCalibrationPoint();
+            continueDetection(video, detector, canvas, cursor);
+            showNextCalibrationPoint(syntheticData);
         }
 
 
