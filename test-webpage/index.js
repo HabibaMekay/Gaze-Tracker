@@ -566,30 +566,6 @@ function softSigmoid(v, gain) { // Soft sigmoid function to map gaze values to s
     return v / (1 + Math.abs(v) * gain);
 }
 
-// function to get model prediction
-function getModelPrediction(leftEyeIris, rightEyeIris, video, gazeModel) {
-    // FOR THE MODEL
-    const videoWidth = video.videoWidth; // Get the video width to normalize coordinates to
-    const videoHeight = video.videoHeight; // Get the video height
-
-    const inputTensor = tf.tensor2d([[
-        leftEyeIris.x / videoWidth,
-        leftEyeIris.y / videoHeight,
-        rightEyeIris.x / videoWidth,
-        rightEyeIris.y / videoHeight
-    ]]);
-
-    const prediction = gazeModel.predict(inputTensor);
-    const [predX, predY] = prediction.dataSync(); // These are in 0–1 normalized screen coordinates
-    inputTensor.dispose();
-    prediction.dispose();
-
-    return {
-        modelDx: predX * window.innerWidth,
-        modelDy: predY * window.innerHeight
-    };
-}
-
 // function to collect calibration data
 function collectCalibrationData(leftEyeIris, rightEyeIris, video) {
     // If we are collecting data and have a calibration target(red dot)
@@ -616,30 +592,13 @@ function collectCalibrationData(leftEyeIris, rightEyeIris, video) {
     }
 }
 
-// function to fuse vector and model outputs
-function fuseOutputs(dx, dy, modelDx, modelDy) {
-    // FOR THE MODEL
-    const FUSION_WEIGHT = 1; // tune between 0 (ML only) to 1 (vector only)
-    // the problem here that dx -> move 200 px from center while modelDx -> gives pixel 15200 on screen
-    // aka dx -> how far you should move (relative offset), modelDx -> a position on the screen(Absolute position)
-    // so we need to fuse them in a way that they are comparable
-    // because these are different units
-    const centerX = window.innerWidth / 2; // center of the screen
-    const centerY = window.innerHeight / 2;
-
-    const fusedDx = FUSION_WEIGHT * dx + (1 - FUSION_WEIGHT) * modelDx;
-    const fusedDy = FUSION_WEIGHT * dy + (1 - FUSION_WEIGHT) * modelDy;
-
-    return { fusedDx, fusedDy };
-}
-
 // function to position cursor
-function positionCursor(fusedDx, fusedDy, cursor) {
+function positionCursor(dx, dy, cursor) {
     const centerX = window.innerWidth / 2; // center of the screen
     const centerY = window.innerHeight / 2;
 
-    const rawX = centerX + fusedDx - cursor.offsetWidth / 2; // takes the center of the screen and adds the gaze movement, then centers the cursor because the cursor is positioned at the top left corner
-    const rawY = centerY + fusedDy - cursor.offsetHeight / 2;
+    const rawX = centerX + dx - cursor.offsetWidth / 2; // takes the center of the screen and adds the gaze movement, then centers the cursor because the cursor is positioned at the top left corner
+    const rawY = centerY + dy - cursor.offsetHeight / 2;
 
     const maxX = window.innerWidth - cursor.offsetWidth / 2; // subtract half the cursor width so, the dot’s center is placed at the eye's target, not its corner
     const maxY = window.innerHeight - cursor.offsetHeight / 2;
@@ -821,20 +780,16 @@ async function updateMagnifier(magnifier, magnifierCtx, clampedX, clampedY, curs
 }
 
 // main async function refactored
-async function continueDetection(video, detector, canvas, cursor, gazeModel) {
+async function continueDetection(video, detector, canvas, cursor) {
     const face = await detector.estimateFaces(video);
     const ctx = canvas.getContext('2d');
-    //////////////////// FOR THE MODEL ///////////////////////
-    let modelDx = 0;
-    let modelDy = 0;
-    /////////////////////////////////////////////////////////
 
     ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear the canvas before drawing
 
     if (face.length > 0) {
         if (face[0].faceInViewConfidence !== undefined && face[0].faceInViewConfidence < 0.99) {
             console.warn("Low confidence — skipping frame"); // if confidence is low, skip the frame // maybe add a warning or make users refresh the page
-            requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor, gazeModel));
+            requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor));
             return;
         }
         console.log('Face detected:', face[0]);
@@ -864,7 +819,7 @@ async function continueDetection(video, detector, canvas, cursor, gazeModel) {
         const isInsideHeadFrame = drawCircleFrame(ctx, nosetip, leftEyeInnerCorner, rightEyeInnerCorner, canvas);
         if (!isInsideHeadFrame) { // If the nose tip is outside the head frame, skip the frame
             console.warn("Nose tip outside head frame — skipping frame");
-            requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor, gazeModel));
+            requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor));
             return;
         } // End of head frame
 
@@ -899,17 +854,9 @@ async function continueDetection(video, detector, canvas, cursor, gazeModel) {
 
         collectCalibrationData(leftEyeIris, rightEyeIris, video);
 
-        const { modelDx: predModelDx, modelDy: predModelDy } = getModelPrediction(leftEyeIris, rightEyeIris, video, gazeModel);
-        modelDx = predModelDx;
-        modelDy = predModelDy;
-        // debugging the model
-        console.log("ML Prediction:", { modelDx, modelDy });
-
-        const { fusedDx, fusedDy } = fuseOutputs(dx, dy, modelDx, modelDy);
-
         console.log('SmoothedX:', smoothedX.toFixed(3), 'SmoothedY:', smoothedY.toFixed(3));
 
-        const { clampedX, clampedY } = positionCursor(fusedDx, fusedDy, cursor);
+        const { clampedX, clampedY } = positionCursor(dx, dy, cursor);
 
         console.log('dx (pixels):', dx.toFixed(1), 'dy (pixels):', dy.toFixed(1));
         console.log('Cursor screen position:', { x: clampedX.toFixed(1), y: clampedY.toFixed(1) });
@@ -921,7 +868,7 @@ async function continueDetection(video, detector, canvas, cursor, gazeModel) {
         console.log('No face detected');
     }
 
-    requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor, gazeModel)); // Call the function again for continuous detection
+    requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor)); // Call the function again for continuous detection
 }
 
 
@@ -1097,7 +1044,6 @@ function createCanvas(video) {
 
 
         async function main() {
-            const gazeModel = await tf.loadLayersModel('model/model.json');
             const video = await camera();
             if (!video) return;
             const canvas = createCanvas(video);
@@ -1107,7 +1053,7 @@ function createCanvas(video) {
             createHeatMapLayer();
             // magnifier = createMagnifier();
             // magnifierCtx = magnifier.getContext('2d');
-            continueDetection(video, detector, canvas, cursor, gazeModel);
+            continueDetection(video, detector, canvas, cursor);
             // showNextCalibrationPoint();
         }
 
