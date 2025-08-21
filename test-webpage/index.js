@@ -779,6 +779,12 @@ async function updateMagnifier(magnifier, magnifierCtx, clampedX, clampedY, curs
     }
 }
 
+function calculateEAR(eyePoints) {  // eyePoints: array of 6 landmarks per eye (e.g., for left: [33,133,159,145,158,153]) // calculates the Eye Aspect Ratio (EAR) for the given eye landmarks
+    const vertical1 = calculateDistance(eyePoints[1], eyePoints[5]);
+    const vertical2 = calculateDistance(eyePoints[2], eyePoints[4]);
+    const horizontal = calculateDistance(eyePoints[0], eyePoints[3]);
+    return (vertical1 + vertical2) / (2 * horizontal);
+}
 // main async function refactored
 async function continueDetection(video, detector, canvas, cursor) {
     const face = await detector.estimateFaces(video);
@@ -801,6 +807,14 @@ async function continueDetection(video, detector, canvas, cursor) {
         // we are using them to estimate iris center or gaze direction
         const rightIrisPoints = [keypoints[473], keypoints[474], keypoints[475], keypoints[476], keypoints[477]]; // Right eye iris landmarks
         const leftIrisPoints = [keypoints[468], keypoints[469], keypoints[470], keypoints[471], keypoints[472]]; // Left eye iris landmarks
+
+        const leftEAR = calculateEAR([keypoints[33], keypoints[160], keypoints[159], keypoints[133], keypoints[145], keypoints[144]]);  // Approximate left eye points
+        const rightEAR = calculateEAR([keypoints[263], keypoints[387], keypoints[386], keypoints[362], keypoints[374], keypoints[373]]);
+        if (leftEAR < 0.2 || rightEAR < 0.2) {
+            console.warn("Blink detected — skipping frame"); // If the eye aspect ratio is too low, it indicates a blink, so we skip the frame
+            requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor));
+            return;
+        }
 
         if (!isIrisShapeValid(rightIrisPoints) || !isIrisShapeValid(leftIrisPoints)) { // if eye is not circleish skip the frame
             console.warn("Iris shape invalid — skipping frame");
