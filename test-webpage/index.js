@@ -1252,6 +1252,83 @@ function createCanvas(video) {
         return cursor;
     }
 
+ // Function to generate synthetic gaze data for model training
+    function generateSyntheticGazeData(numUsers, pointsPerUser, screenWidth, screenHeight) {
+    const margin = 0.02;
+    const syntheticData = [];
+    
+    // Reuse calibration points logic
+    const gridWidth = 13;
+    const gridHeight = 7;
+    const numRandomPoints = 200;
+    const calibrationPoints = [];
+
+    // Generate grid points
+    for (let i = 0; i < gridWidth; i++) {
+        for (let j = 0; j < gridHeight; j++) {
+            const xRatio = margin + (i / (gridWidth - 1)) * (1 - 2 * margin);
+            const yRatio = margin + (j / (gridHeight - 1)) * (1 - 2 * margin);
+            calibrationPoints.push([xRatio, yRatio]);
+        }
+    }
+
+    // Add random points
+    for (let i = 0; i < numRandomPoints; i++) {
+        const xRatio = margin + Math.random() * (1 - 2 * margin);
+        const yRatio = margin + Math.random() * (1 - 2 * margin);
+        calibrationPoints.push([xRatio, yRatio]);
+    }
+
+    // Shuffle points
+    for (let i = calibrationPoints.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [calibrationPoints[i], calibrationPoints[j]] = [calibrationPoints[j], calibrationPoints[i]];
+    }
+
+    for (let user = 0; user < numUsers; user++) {
+        const userBiasX = (Math.random() - 0.5) * 0.05;
+        const userBiasY = (Math.random() - 0.5) * 0.05;
+        const noiseStdDev = 0.03 + Math.random() * 0.02;
+        const videoWidth = 1280;
+        const videoHeight = 720;
+
+        for (let i = 0; i < Math.min(pointsPerUser, calibrationPoints.length); i++) {
+            const [targetXRatio, targetYRatio] = calibrationPoints[i];
+            const targetX = targetXRatio * screenWidth;
+            const targetY = targetYRatio * screenHeight;
+
+            const leftIrisX = (targetXRatio + userBiasX + (Math.random() - 0.5) * noiseStdDev) * videoWidth;
+            const leftIrisY = (targetYRatio + userBiasY + (Math.random() - 0.5) * noiseStdDev) * videoHeight;
+            const rightIrisX = (targetXRatio + userBiasX + (Math.random() - 0.5) * noiseStdDev) * videoWidth;
+            const rightIrisY = (targetYRatio + userBiasY + (Math.random() - 0.5) * noiseStdDev) * videoHeight;
+
+            const timestamp = Date.now() - Math.floor(Math.random() * 3600 * 1000);
+
+            const sample = {
+                timestamp,
+                left_iris_x: (leftIrisX / videoWidth).toFixed(5),
+                left_iris_y: (leftIrisY / videoHeight).toFixed(5),
+                right_iris_x: (rightIrisX / videoWidth).toFixed(5),
+                right_iris_y: (rightIrisY / videoHeight).toFixed(5),
+                gaze_x: Math.round(targetX),
+                gaze_y: Math.round(targetY),
+                target_x: targetX,
+                target_y: targetY,
+                target_x_ratio: targetXRatio.toFixed(5),
+                target_y_ratio: targetYRatio.toFixed(5),
+                screen_width: screenWidth,
+                screen_height: screenHeight,
+                user_id: user,
+                is_synthetic: 1
+            };
+
+            syntheticData.push(sample);
+        }
+    }
+
+    return syntheticData;
+}
+
     function downloadCSV(data) { // Function to download collected gaze data as a CSV file to train on it later
         if (data.length === 0) { 
             alert("No data to download");
@@ -1330,50 +1407,96 @@ for (let i = allCalibrationPoints.length - 1; i > 0; i--) {
         let currentPointIndex = 0; // Index of the current calibration point
         let dotElement = null; // Element to display the red dot
 
-        function showNextCalibrationPoint() { // Function to show the next calibration point
-        if (dotElement) { // If a dot is already displayed, remove it
-            document.body.removeChild(dotElement);
-            dotElement = null; // clear the old dot before showing the next one
-        }
-           // replaced the refrence to calibrationpionts to allcalibration points
-        if (currentPointIndex >= allCalibrationPoints.length) { // If all calibration points have been shown, finish calibration
-            console.log(" Calibration complete");
-            downloadCSV(collectedData); // call the download csv function to save the collected data
-            return;
-        }
+        // function showNextCalibrationPoint() { // Function to show the next calibration point
+        // if (dotElement) { // If a dot is already displayed, remove it
+        //     document.body.removeChild(dotElement);
+        //     dotElement = null; // clear the old dot before showing the next one
+        // }
+        //    // replaced the refrence to calibrationpionts to allcalibration points
+        // if (currentPointIndex >= allCalibrationPoints.length) { // If all calibration points have been shown, finish calibration
+        //     console.log(" Calibration complete");
+        //     downloadCSV(collectedData); // call the download csv function to save the collected data
+        //     return;
+        // }
 
-        const [xRatio, yRatio] = allCalibrationPoints[currentPointIndex]; // takes the next calibration point ratios
-        const x = window.innerWidth * xRatio; // Calculate the x position based on the ratio and window width
-        const y = window.innerHeight * yRatio;
+        // const [xRatio, yRatio] = allCalibrationPoints[currentPointIndex]; // takes the next calibration point ratios
+        // const x = window.innerWidth * xRatio; // Calculate the x position based on the ratio and window width
+        // const y = window.innerHeight * yRatio;
 
-        console.log(window.innerWidth+ "   eww  "+ window.innerHeight);
-        // added xRatio, yRatio to be stored
-        currentCalibrationTarget = { x, y , xRatio, yRatio}; //set red dot position to the current calibration target
-        isCollecting = false; // stop collecting until the next point is shown
+        // console.log(window.innerWidth+ "   eww  "+ window.innerHeight);
+        // // added xRatio, yRatio to be stored
+        // currentCalibrationTarget = { x, y , xRatio, yRatio}; //set red dot position to the current calibration target
+        // isCollecting = false; // stop collecting until the next point is shown
 
-        dotElement = document.createElement('div'); // Create a new div element for the red dot
-        dotElement.style.position = 'fixed';
-        dotElement.style.left = `${x - 10}px`;
-        dotElement.style.top = `${y - 10}px`; // subtract 10 to center the dot
-        dotElement.style.width = '20px';
-        dotElement.style.height = '20px';
-        dotElement.style.backgroundColor = 'black';
-        dotElement.style.borderRadius = '50%';
-        dotElement.style.zIndex = 3000;
-        document.body.appendChild(dotElement); // Append the dot to the body
+        // dotElement = document.createElement('div'); // Create a new div element for the red dot
+        // dotElement.style.position = 'fixed';
+        // dotElement.style.left = `${x - 10}px`;
+        // dotElement.style.top = `${y - 10}px`; // subtract 10 to center the dot
+        // dotElement.style.width = '20px';
+        // dotElement.style.height = '20px';
+        // dotElement.style.backgroundColor = 'black';
+        // dotElement.style.borderRadius = '50%';
+        // dotElement.style.zIndex = 3000;
+        // document.body.appendChild(dotElement); // Append the dot to the body
 
-        // Wait 1 second, then collect for 3 seconds
+        // // Wait 1 second, then collect for 3 seconds
+        // setTimeout(() => {
+        //     isCollecting = true; 
+        //     console.log(` Collecting at point ${currentPointIndex + 1}`); // because index starts at 0
+        //     setTimeout(() => {
+        //     isCollecting = false;
+        //     currentPointIndex++; // move to the next point
+        //     showNextCalibrationPoint(); //show next point 
+        //     }, 1500); // Collect data for 1.5 seconds at this point
+        // }, 500); // Wait 0.5 second before starting to collect data
+        // }
+
+//////added the synthetic data to the calibration points    
+function showNextCalibrationPoint(syntheticData = []) {
+    if (dotElement) {
+        document.body.removeChild(dotElement);
+        dotElement = null;
+    }
+
+    if (currentPointIndex >= allCalibrationPoints.length) {
+        console.log("Calibration complete");
+        // Add is_synthetic flag to real data
+        collectedData.forEach(sample => sample.is_synthetic = 0);
+        // Combine real and synthetic data
+        const combinedData = [...collectedData, ...syntheticData];
+        console.log('[Data] Combined:', combinedData.length, 'samples (Real:', collectedData.length, ', Synthetic:', syntheticData.length, ')');
+        downloadCSV(combinedData);
+        return;
+    }
+
+    const [xRatio, yRatio] = allCalibrationPoints[currentPointIndex];
+    const x = window.innerWidth * xRatio;
+    const y = window.innerHeight * yRatio;
+
+    currentCalibrationTarget = { x, y, xRatio, yRatio };
+    isCollecting = false;
+
+    dotElement = document.createElement('div');
+    dotElement.style.position = 'fixed';
+    dotElement.style.left = `${x - 10}px`;
+    dotElement.style.top = `${y - 10}px`;
+    dotElement.style.width = '20px';
+    dotElement.style.height = '20px';
+    dotElement.style.backgroundColor = 'black';
+    dotElement.style.borderRadius = '50%';
+    dotElement.style.zIndex = 3000;
+    document.body.appendChild(dotElement);
+
+    setTimeout(() => {
+        isCollecting = true;
+        console.log(`Collecting at point ${currentPointIndex + 1}`);
         setTimeout(() => {
-            isCollecting = true; 
-            console.log(` Collecting at point ${currentPointIndex + 1}`); // because index starts at 0
-            setTimeout(() => {
             isCollecting = false;
-            currentPointIndex++; // move to the next point
-            showNextCalibrationPoint(); //show next point 
-            }, 1500); // Collect data for 1.5 seconds at this point
-        }, 500); // Wait 0.5 second before starting to collect data
-        }
-
+            currentPointIndex++;
+            showNextCalibrationPoint(syntheticData);
+        }, 1500);
+    }, 500);
+}
     // Temporal filter helper --> to be added////////////
     const sliding_window = 500; //sliding window length -> keep all gaze samples from last half second
     const slidingWindows = []; // to store gaze x, gaze y and timestamp
@@ -1457,10 +1580,12 @@ async function main() {
             if (!detector) return;
             const cursor = createCursor();
             createHeatMapLayer();
+             const syntheticData = generateSyntheticGazeData(50, 291, window.innerWidth, window.innerHeight);
+             console.log('[Synthetic Data] Generated:', syntheticData.length, 'samples');
             // magnifier = createMagnifier();
             // magnifierCtx = magnifier.getContext('2d');
             continueDetection(video, detector, canvas, cursor);
-            showNextCalibrationPoint();
+            showNextCalibrationPoint(syntheticData);
         }
 
 
