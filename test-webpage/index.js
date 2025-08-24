@@ -6,7 +6,7 @@ const GAZE_SENSITIVITY_Y = 1.2; // Higher vertical sensitivity
 const AMPLIFY_RIGHT = 15, AMPLIFY_LEFT = 8; // reversed
 const AMPLIFY_UP = 34, AMPLIFY_DOWN = 15;
 let baselineFrameCount = 0; // Count frames for baseline adjustment
-const BASELINE_MAX_FRAMES = 30; // Maximum frames to adjust baseline
+const BASELINE_MAX_FRAMES = 600; // Maximum frames to adjust baseline
 const BASELINE_UPDATE_THRESHOLD = 0.005;//ignore head movements that are too large to avoid adjusting the baseline too frequently
 let baselineVx = null;
 let minVx =  Infinity, maxVx = -Infinity;
@@ -25,6 +25,9 @@ const SCROLL_DWELL_THRESHOLD = 800; // Time in milliseconds to start scrolling a
 const NEUTRAL_ZONE_HEIGHT = 0.8; // safe no scroll zone in the middle of the screen
 let scrollDwellStart = null;// start time for scrolling
 let scrollDirection = null;  // direction of scrolling
+
+const BASELINE_WINDOW_MS = 10000; // 10 seconds window for baseline calculation
+const baselineSamples = []; // Store recent baseline samples
 
 navigator.mediaDevices.getUserMedia({ // increase the video resolution to improve gaze tracking accuracy
   video: { width: 1280, height: 720 },
@@ -516,38 +519,56 @@ function normalizeGazeVector(gazeVector, keypoints) {
     const nosetip = keypoints[2];
     const H = Math.max(0.001, calculateDistance(noseBridge, nosetip)); // Calculate the height of the nose bridge//how close the head is to the camera, to avoid division by zero
     const Vy = gazeVector.y / H; // Normalize the y component of the gaze vector
+    //////////////////////////////////////idk is this better or not but it seems to work better ////////////////////////////////
+    // adjust the gaze vector based on the tilt of the head
+    const tiltAngle = Math.atan2(rightEyeInnerCorner.y - leftEyeInnerCorner.y, rightEyeInnerCorner.x - leftEyeInnerCorner.x); // Calculate the tilt angle of the head based on the eye corners
+    const adjustedVx = Vx * Math.cos(tiltAngle) + Vy * Math.sin(tiltAngle); // adjust the x component of the gaze vector based on the tilt angle
+    const adjustedVy = Vy * Math.cos(tiltAngle) - Vx * Math.sin(tiltAngle); //
 
-    return { Vx, Vy, L, H, noseBridge, nosetip };
+    return { Vx: adjustedVx, Vy: adjustedVy, L, H, noseBridge, nosetip,noseX: nosetip.x, noseY: nosetip.y  };
 }
 
 // function to update baseline
-function updateBaseline(Vx, Vy) {
-    // first 30 frames are used to calculate the baseline
-    // This is to avoid adjusting the baseline too frequently, which can lead to instability
-    if (baselineFrameCount < BASELINE_MAX_FRAMES) {
-        // vertical baseline
-        if (baselineVy === null) baselineVy = Vy;
-        const deltaVy = Math.abs(Vy - baselineVy);
-        if (deltaVy < BASELINE_UPDATE_THRESHOLD) {
-            baselineVy = 0.9 * baselineVy + 0.1 * Vy;
-        }
+function updateBaseline(Vx, Vy, noseX, noseY) { // Update the baseline gaze vector based on stable head position over time
+    const timestamp = performance.now(); // Use performance.now() for timestamp in milliseconds
+    baselineSamples.push({ Vx, Vy, timestamp, noseX, noseY }); // Add the new sample to the list / it is like a sliding window for the last 10 seconds
 
-        // horizontal baseline
-        if (baselineVx === null) baselineVx = Vx;
-        const deltaVx = Math.abs(Vx - baselineVx);
-        if (deltaVx < BASELINE_UPDATE_THRESHOLD) {
-            baselineVx = 0.9 * baselineVx + 0.1 * Vx;
-        }
+    // remove samples older than 10 seconds
+    while (baselineSamples.length && timestamp - baselineSamples[0].timestamp > BASELINE_WINDOW_MS) { // 10 seconds window
+        baselineSamples.shift(); // remove old samples
+    }
 
-        baselineFrameCount++; // increment once per frame
+    // only use samples where head is stable (nose movement within threshold)
+    if (baselineSamples.length > 1) { // need at least 2 samples to compare
+        const recentSample = baselineSamples[baselineSamples.length - 1]; // most recent sample
+        const prevSample = baselineSamples[baselineSamples.length - 2]; // previous sample
+        const noseMovement = Math.sqrt(// calculate nose movement between the two most recent samples
+            Math.pow(recentSample.noseX - prevSample.noseX, 2) + 
+            Math.pow(recentSample.noseY - prevSample.noseY, 2)
+        );
+        if (noseMovement > BASELINE_UPDATE_THRESHOLD * 100) {  // if nose moved more than threshold
+            return; // Skip if head moved too much
+        }
+    }
+
+    // calculate average Vx, Vy from stable samples
+    if (baselineSamples.length > 10) { // need at least 10 samples to calculate a reliable baseline
+        let sumVx = 0, sumVy = 0, count = 0;
+        for (const sample of baselineSamples) { // average the Vx and Vy values
+            sumVx += sample.Vx;
+            sumVy += sample.Vy;
+            count++;
+        }
+        baselineVx = sumVx / count; // update the baseline values
+        baselineVy = sumVy / count;
     }
 }
 
 // function to center and amplify gaze
 function centerAndAmplify(Vx, Vy) {
     // screen's Y axis is 0 at the top and increases downwards // look down Vy-> increases and vice versa
-    const centeredVx = Vx - baselineVx;
-    const centeredVy = Vy - baselineVy;
+    const centeredVx = baselineVx !== null ? Vx - baselineVx : Vx; // Center the gaze vector by subtracting the baseline
+    const centeredVy = baselineVy !== null ? Vy - baselineVy : Vy; 
 
     const amplifiedVx = centeredVx < 0 ? centeredVx * AMPLIFY_LEFT : centeredVx * AMPLIFY_RIGHT;
     const amplifiedVy = centeredVy < 0 ? centeredVy * AMPLIFY_UP : centeredVy * AMPLIFY_DOWN;
@@ -827,7 +848,7 @@ async function continueDetection(video, detector, canvas, cursor) {
         drawIrisCenters(ctx, leftEyeIris, rightEyeIris, canvas);
 
         const gazeVector = calculateGazeVector(irisCenter, cornerCenter);
-        const { Vx, Vy, L, H, noseBridge, nosetip } = normalizeGazeVector(gazeVector, keypoints);
+        const { Vx, Vy, L, H, noseBridge,nosetip, noseX,noseY} = normalizeGazeVector(gazeVector, keypoints); // normalize the gaze vector to remove scale dependency and handle head movements
 
         // For the head frame
         const isInsideHeadFrame = drawCircleFrame(ctx, nosetip, leftEyeInnerCorner, rightEyeInnerCorner, canvas);
@@ -849,7 +870,10 @@ async function continueDetection(video, detector, canvas, cursor) {
         console.log('Nose bridge height H:', H.toFixed(3));
         console.log('Normalized Vx:', Vx.toFixed(3), 'Normalized Vy:', Vy.toFixed(3));
 
-        updateBaseline(Vx, Vy);
+        if (baselineFrameCount < BASELINE_MAX_FRAMES) { // Collect baseline data for the first N frames
+            updateBaseline(Vx, Vy, noseX, noseY); // Update baseline only if head is stable
+            baselineFrameCount++; 
+        }
 
         const normalizedGazeVector = centerAndAmplify(Vx, Vy);
         console.log('Normalized Gaze Vector:', normalizedGazeVector);
