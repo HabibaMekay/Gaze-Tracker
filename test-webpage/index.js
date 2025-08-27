@@ -53,7 +53,7 @@ function createHeatMapLayer() { // Create a canvas for the heatmap layer for det
 }
 let activeElement = null; // Tracks the currently focused element
 let dwellStartTime = null; // Tracks when dwell started
-const dwellThreshold = 1000; // Dwell time threshold in milliseconds (1 second)
+const dwellThreshold = 800; // Dwell time threshold in milliseconds (1 second)
 
 function ContextualScore(gazeX, gazeY) {
     const elements = document.querySelectorAll("button, input, textarea, a, .virtual-key, [role='button'], [role='link'], [role='textbox']");
@@ -150,7 +150,7 @@ function createMagnifier() {
 
 let pressTimer = 0;
 let pressInterval = null;
-const pressTimerThreshold = 1000;// 1 sec 
+const pressTimerThreshold = 500;// 0.5 sec 
 let isPressingFeedback = null;
 
 function pressVisualFeedback(btn, onComplete) {
@@ -1083,6 +1083,7 @@ function createCanvas(video) {
 
 
         async function main() {
+           
             const video = await camera();
             if (!video) return;
             const canvas = createCanvas(video);
