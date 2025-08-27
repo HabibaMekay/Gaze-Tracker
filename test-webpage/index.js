@@ -150,7 +150,7 @@ function createMagnifier() {
 
 let pressTimer = 0;
 let pressInterval = null;
-const pressTimerThreshold = 2000; //2 sec
+const pressTimerThreshold = 1000;// 1 sec 
 let isPressingFeedback = null;
 
 function pressVisualFeedback(btn, onComplete) {
@@ -171,7 +171,7 @@ function pressVisualFeedback(btn, onComplete) {
     btn.appendChild(isPressingFeedback);
 
     pressInterval = setInterval(() => {
-        pressTimer += 100; // increment every 100ms
+        pressTimer += 25; // increment every 100ms
         let progress = (pressTimer/pressTimerThreshold) * 100; // calculate progress percentage
         isPressingFeedback.style.background = `linear-gradient(to right, rgba(76, 175, 80, 0.5) ${progress}%, transparent ${progress}%)`;
         if (pressTimer >= pressTimerThreshold) {
@@ -182,7 +182,7 @@ function pressVisualFeedback(btn, onComplete) {
                 onComplete();
             }
         }
-    }, 100); // update every 100ms
+    }, 25); // update every 100ms
 }
 
 function stopPressing() {
@@ -806,7 +806,8 @@ function calculateEAR(eyePoints) {  // eyePoints: array of 6 landmarks per eye (
     const horizontal = calculateDistance(eyePoints[0], eyePoints[3]);
     return (vertical1 + vertical2) / (2 * horizontal);
 }
-// main async function refactored
+// main 
+// async function refactored
 async function continueDetection(video, detector, canvas, cursor) {
     const face = await detector.estimateFaces(video);
     const ctx = canvas.getContext('2d');
