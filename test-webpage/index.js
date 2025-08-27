@@ -135,16 +135,17 @@ function highlightCandidates(candidates) {
 }
 function createMagnifier() {
     const magnifier = document.createElement('canvas');
-    magnifier.width = 200;
-    magnifier.height = 200;
+    magnifier.width = 250;
+    magnifier.height = 250;
     magnifier.style.position = 'fixed';
     magnifier.style.border = '2px solid #000';
     magnifier.style.borderRadius = '50%';
-    magnifier.style.zIndex = '2500';
+    magnifier.style.zIndex = '100000'; 
     magnifier.style.pointerEvents = 'none';
-    magnifier.style.display = 'none';
-    magnifier.style.backgroundColor = 'white'; 
+    magnifier.style.display = 'block'; 
+    magnifier.style.backgroundColor = 'white';
     document.body.appendChild(magnifier);
+    console.log('Magnifier created and appended to DOM:', magnifier);
     return magnifier;
 }
 
@@ -734,24 +735,25 @@ function handleInteractions(clampedX, clampedY, cursor) {
 }
 
 // Function to handle magnifier
-async function updateMagnifier(magnifier, magnifierCtx, clampedX, clampedY, cursor) {
+async function updateMagnifier(magnifier, magnifierCtx, clampedX, clampedY){//, cursor) {
     try {
-        const zoomFactor = 2;
-        const captureSize = 100; // Area to capture (will be zoomed 2x)
+        console.log("mew");
+        const zoomFactor = 4;
+        const captureSize = 150; // Area to capture (will be zoomed 2x)
 
         // Get cursor center position
-        const cursorCenterX = clampedX + cursor.offsetWidth / 2;
-        const cursorCenterY = clampedY + cursor.offsetHeight / 2;
+        const cursorCenterX = clampedX //+ cursor.offsetWidth / 2;
+        const cursorCenterY = clampedY //+ cursor.offsetHeight / 2;
 
         // Position magnifier near cursor
-        magnifier.style.left = `${cursorCenterX + 20}px`;
-        magnifier.style.top = `${cursorCenterY - magnifier.height - 20}px`;
+        magnifier.style.left = `${cursorCenterX - magnifier.width / 2}px`; 
+        magnifier.style.top = `${cursorCenterY - magnifier.height / 2}px`;
 
         // Create temporary canvas for capture
         const tempCanvas = document.createElement('canvas');
         tempCanvas.width = captureSize;
         tempCanvas.height = captureSize;
-        const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
+        const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true, alpha: true });
 
         // Fill with white background first
         tempCtx.fillStyle = 'white';
@@ -764,13 +766,16 @@ async function updateMagnifier(magnifier, magnifierCtx, clampedX, clampedY, curs
                 y: cursorCenterY - captureSize / 2,
                 width: captureSize,
                 height: captureSize,
-                scale: 1,
+                scale: 4,
                 logging: false,
                 useCORS: true,
                 onclone: (clonedDoc) => {
                     // Hide the magnifier in the clone to avoid recursion
-                    const clonedMagnifier = clonedDoc.querySelector('canvas[style*="fixed"]');
-                    if (clonedMagnifier) clonedMagnifier.style.display = 'none';
+                    const canvases = clonedDoc.querySelectorAll('canvas[style*="fixed"]');
+                    canvases.forEach(canvas => {
+                        canvas.style.display = 'none';
+                        console.log('Hid canvas in cloned DOM:', canvas);
+                    })
                 }
             }).then(canvas => {
                 tempCtx.drawImage(canvas, 0, 0, captureSize, captureSize);
@@ -780,6 +785,9 @@ async function updateMagnifier(magnifier, magnifierCtx, clampedX, clampedY, curs
 
         // Draw to magnifier
         magnifierCtx.clearRect(0, 0, magnifier.width, magnifier.height);
+        magnifierCtx.imageSmoothingEnabled = true;
+        magnifierCtx.imageSmoothingQuality = 'high'; 
+
         magnifierCtx.drawImage(
             tempCanvas,
             0, 0, captureSize, captureSize,
@@ -787,14 +795,15 @@ async function updateMagnifier(magnifier, magnifierCtx, clampedX, clampedY, curs
         );
 
         // Add crosshair
-        magnifierCtx.strokeStyle = 'red';
-        magnifierCtx.lineWidth = 2;
-        magnifierCtx.beginPath();
-        magnifierCtx.moveTo(magnifier.width / 2, 0);
-        magnifierCtx.lineTo(magnifier.width / 2, magnifier.height);
-        magnifierCtx.moveTo(0, magnifier.height / 2);
-        magnifierCtx.lineTo(magnifier.width, magnifier.height / 2);
-        magnifierCtx.stroke();
+        // console.log("mewwww");
+        // magnifierCtx.strokeStyle = 'red';
+        // magnifierCtx.lineWidth = 2;
+        // magnifierCtx.beginPath();
+        // magnifierCtx.moveTo(magnifier.width / 2, 0);
+        // magnifierCtx.lineTo(magnifier.width / 2, magnifier.height);
+        // magnifierCtx.moveTo(0, magnifier.height / 2);
+        // magnifierCtx.lineTo(magnifier.width, magnifier.height / 2);
+        // magnifierCtx.stroke();
     } catch (e) {
         console.warn("Magnifier error:", e);
     }
@@ -1078,21 +1087,28 @@ function createCanvas(video) {
 
     /////////////////////////////////////////////////////
 
-
+        function testMagnifier(x, y) {
+            if (!magnifier || !magnifierCtx) {
+                magnifier = createMagnifier();
+                magnifierCtx = magnifier.getContext('2d');
+            }
+            updateMagnifier(magnifier, magnifierCtx, x, y);
+        }
 
 
         async function main() {
-            const video = await camera();
-            if (!video) return;
-            const canvas = createCanvas(video);
-            const detector = await loadmodel();
-            if (!detector) return;
-            const cursor = createCursor();
-            createHeatMapLayer();
-            // magnifier = createMagnifier();
-            // magnifierCtx = magnifier.getContext('2d');
-            continueDetection(video, detector, canvas, cursor);
+            // const video = await camera();
+            // if (!video) return;
+            //const canvas = createCanvas(video);
+            //const detector = await loadmodel();
+            //if (!detector) return;
+            //const cursor = createCursor();
+            //createHeatMapLayer();
+            magnifier = createMagnifier();
+            //magnifierCtx = magnifier.getContext('2d');
+            //continueDetection(video, detector, canvas, cursor);
             // showNextCalibrationPoint();
+            testMagnifier(50, 200);
         }
 
 
