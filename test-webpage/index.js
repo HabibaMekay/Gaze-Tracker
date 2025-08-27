@@ -1049,7 +1049,7 @@ function createCanvas(video) {
         }
 
     // Temporal filter helper --> to be added////////////
-    const sliding_window = 900; //sliding window length -> keep all gaze samples from last half second
+    const sliding_window = 700; //sliding window length -> keep all gaze samples from last half second
     const slidingWindows = []; // to store gaze x, gaze y and timestamp
 
     function temporalFilter(x, y){
