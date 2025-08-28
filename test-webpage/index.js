@@ -18,6 +18,10 @@ let taskCompletions = 0;
 let errors = 0;
 let magnifier = null;
 let magnifierCtx = null;
+let magnifierActive = false;
+let frozenCaptureX = null;
+let frozenCaptureY = null;
+
 
 const SCROLL_ZONE_HEIGHT = 0.1; // 10% OF the screen height for scroll zones
 const MAX_SCROLL_SPEED = 5; // max scroll speed (when I increased it became shaky)
@@ -734,6 +738,25 @@ function handleInteractions(clampedX, clampedY, cursor) {
     }
 }
 
+// Add this helper
+function isMouthOpen(keypoints) {
+    // upper and lower inner lip
+    const upperLip = keypoints[13]; 
+    const lowerLip = keypoints[14];
+
+    // distance between lips
+    const mouthOpenDist = Math.abs(lowerLip.y - upperLip.y);
+
+    // Normalize by face size (distance between eyes)
+    const leftEye = keypoints[33];
+    const rightEye = keypoints[263];
+    const eyeDist = Math.hypot(rightEye.x - leftEye.x, rightEye.y - leftEye.y);
+
+    // If mouth gap is more than ~0.25 of eye distance, it's "open"
+    return mouthOpenDist > eyeDist * 0.25;
+}
+
+
 // Function to handle magnifier
 async function updateMagnifier(magnifier, magnifierCtx, clampedX, clampedY){//, cursor) {
     try {
@@ -744,13 +767,13 @@ async function updateMagnifier(magnifier, magnifierCtx, clampedX, clampedY){//, 
         const captureWidth = magnifier.width / zoomFactor; // 500 / 4 = 125
         const captureHeight = magnifier.height / zoomFactor; // 250 / 4 = 6
 
-        // Get cursor center position
+        // // Get cursor center position
         const cursorCenterX = clampedX //+ cursor.offsetWidth / 2;
         const cursorCenterY = clampedY //+ cursor.offsetHeight / 2;
 
-        // Position magnifier near cursor
-        magnifier.style.left = `${cursorCenterX - magnifier.width / 2}px`; 
-        magnifier.style.top = `${cursorCenterY - magnifier.height / 2}px`;
+        // // Position magnifier near cursor
+        // magnifier.style.left = `${cursorCenterX - magnifier.width / 2}px`; 
+        // magnifier.style.top = `${cursorCenterY - magnifier.height / 2}px`;
 
         // Create temporary canvas for capture
         const tempCanvas = document.createElement('canvas');
@@ -841,6 +864,7 @@ async function continueDetection(video, detector, canvas, cursor) {
         const rightIrisPoints = [keypoints[473], keypoints[474], keypoints[475], keypoints[476], keypoints[477]]; // Right eye iris landmarks
         const leftIrisPoints = [keypoints[468], keypoints[469], keypoints[470], keypoints[471], keypoints[472]]; // Left eye iris landmarks
 
+        
         const leftEAR = calculateEAR([keypoints[33], keypoints[160], keypoints[159], keypoints[133], keypoints[145], keypoints[144]]);  // Approximate left eye points
         const rightEAR = calculateEAR([keypoints[263], keypoints[387], keypoints[386], keypoints[362], keypoints[374], keypoints[373]]);
         if (leftEAR < 0.2 || rightEAR < 0.2) {
@@ -911,7 +935,36 @@ async function continueDetection(video, detector, canvas, cursor) {
         console.log('dx (pixels):', dx.toFixed(1), 'dy (pixels):', dy.toFixed(1));
         console.log('Cursor screen position:', { x: clampedX.toFixed(1), y: clampedY.toFixed(1) });
 
-       
+       if (isMouthOpen(keypoints)) {
+    if (!magnifierActive) {
+        magnifier = createMagnifier();
+        magnifierCtx = magnifier.getContext('2d');
+
+        // Place magnifier at cursor ONCE
+        magnifier.style.left = `${clampedX - magnifier.width / 2}px`;
+        magnifier.style.top = `${clampedY - magnifier.height / 2}px`;
+
+        // Freeze capture point
+        frozenCaptureX = clampedX;
+        frozenCaptureY = clampedY;
+
+        magnifier.style.display = 'block';
+        magnifierActive = true;
+    }
+
+    // Always update, but use frozen coords
+    updateMagnifier(magnifier, magnifierCtx, frozenCaptureX, frozenCaptureY);
+
+} else {
+    if (magnifierActive) {
+        magnifier.style.display = 'none';
+        magnifierActive = false;
+        frozenCaptureX = null;
+        frozenCaptureY = null;
+    }
+}
+
+
 
         handleInteractions(clampedX, clampedY, cursor);
     } else {
@@ -920,6 +973,7 @@ async function continueDetection(video, detector, canvas, cursor) {
 
     requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor)); // Call the function again for continuous detection
 }
+
 
 
 // Euclidean distnace
@@ -1107,11 +1161,11 @@ function createCanvas(video) {
             if (!detector) return;
             const cursor = createCursor();
             createHeatMapLayer();
-            magnifier = createMagnifier();
-            magnifierCtx = magnifier.getContext('2d');
+            //magnifier = createMagnifier();
+            //magnifierCtx = magnifier.getContext('2d');
             continueDetection(video, detector, canvas, cursor);
             // showNextCalibrationPoint();
-            testMagnifier(50, 200);
+            //testMagnifier(50, 200);
         }
 
 
