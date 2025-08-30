@@ -806,6 +806,11 @@ function calculateEAR(eyePoints) {  // eyePoints: array of 6 landmarks per eye (
     const horizontal = calculateDistance(eyePoints[0], eyePoints[3]);
     return (vertical1 + vertical2) / (2 * horizontal);
 }
+
+
+let predictedPositionsBuffer = []; // Buffer to store last N predicted positions
+let calibrationResults = []; // Store calibration results
+
 // main 
 // async function refactored
 async function continueDetection(video, detector, canvas, cursor) {
@@ -897,6 +902,11 @@ async function continueDetection(video, detector, canvas, cursor) {
 
         const { clampedX, clampedY } = positionCursor(dx, dy, cursor);
 
+       
+        if (isCollecting) {
+            predictedPositionsBuffer.push({ x: clampedX, y: clampedY }); // add current predicted position to buffer
+        }
+
         console.log('dx (pixels):', dx.toFixed(1), 'dy (pixels):', dy.toFixed(1));
         console.log('Cursor screen position:', { x: clampedX.toFixed(1), y: clampedY.toFixed(1) });
 
@@ -958,30 +968,93 @@ function createCanvas(video) {
         document.body.appendChild(cursor);
         return cursor;
     }
+function downloadCSV(gazeData, calibrationResults, overallAccuracy) { // function to download CSV with gaze data and accuracy results
+    if (!gazeData.length && !calibrationResults.length && !overallAccuracy) {  //no data to download
+        alert("no data to download");
+        return;
+    }
 
-    function downloadCSV(data) { // Function to download collected gaze data as a CSV file to train on it later
-        if (data.length === 0) { 
-            alert("No data to download");
-            return;
+    const csvRows = []; // Array to hold CSV rows
+
+    csvRows.push("# Gaze Data");
+    if (gazeData.length > 0) {
+        const gazeHeaders = Object.keys(gazeData[0]);
+        csvRows.push(gazeHeaders.join(','));
+        for (const row of gazeData) {
+            const values = gazeHeaders.map(h => row[h]);
+            csvRows.push(values.join(','));
         }
-
-        const csvRows = []; // Array to hold CSV rows
-        const headers = Object.keys(data[0]); // Get the headers from the first data object
-        csvRows.push(headers.join(',')); // Add headers to the first row
-
-        for (const row of data) {   // Iterate through each data object and create a CSV row
-            const values = headers.map(h => row[h]); // Get values for each header
-            csvRows.push(values.join(',')); // Join values with commas, and add the string as a new row
+    } else {
+        csvRows.push("No gaze data collected");
+    }
+ 
+    csvRows.push(""); // Blank line
+    csvRows.push("# Per-Point Accuracy"); // get accuracy per calibration point
+    if (calibrationResults.length > 0) {
+        const accuracyHeaders = [
+            "pointIndex",
+            "targetX",
+            "targetY",
+            "avgPredX",
+            "avgPredY",
+            "errorX",
+            "errorY",
+            "euclideanError",
+            "errorX_percent",
+            "errorY_percent",
+            "euclideanError_percent"
+        ];
+        csvRows.push(accuracyHeaders.join(','));
+        for (const row of calibrationResults) {
+            const values = [
+                row.pointIndex,
+                row.targetX.toFixed(2),
+                row.targetY.toFixed(2),
+                row.avgPredX.toFixed(2),
+                row.avgPredY.toFixed(2),
+                row.errorX.toFixed(2),
+                row.errorY.toFixed(2),
+                row.euclideanError.toFixed(2),
+                row.errorXPercent.toFixed(2),
+                row.errorYPercent.toFixed(2),
+                row.euclideanErrorPercent.toFixed(2)
+            ];
+            csvRows.push(values.join(','));
         }
+    } else {
+        csvRows.push("No per-point accuracy data");
+    }
 
-        const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' }); // turns all csv roes into a single string separated by new lines // blob is a file in memory
-        const url = URL.createObjectURL(blob); //points to the blob in memory (pretend it is a file (data stored but not saved on disk yet))
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'gaze_data.csv'; // Set the file name for download
-        a.click(); // simmulate a click to trigger the download
-        URL.revokeObjectURL(url); // Clean up the temp URL object to free memory
-        }
+    
+    csvRows.push(""); // Blank line
+    csvRows.push("# Overall Accuracy"); // overall accuracy metrics
+    if (overallAccuracy) {
+        csvRows.push("metric,value");
+        csvRows.push(`MAE_X,${overallAccuracy.maeX}`);
+        csvRows.push(`MAE_Y,${overallAccuracy.maeY}`);
+        csvRows.push(`MAE_Euclidean,${overallAccuracy.maeEuclidean}`);
+        csvRows.push(`MAE_X_Percent,${overallAccuracy.maeXPercent}`);
+        csvRows.push(`MAE_Y_Percent,${overallAccuracy.maeYPercent}`);
+        csvRows.push(`MAE_Euclidean_Percent,${overallAccuracy.maeEuclideanPercent}`);
+        csvRows.push(`RMSE_X,${overallAccuracy.rmseX}`);
+        csvRows.push(`RMSE_Y,${overallAccuracy.rmseY}`);
+        csvRows.push(`RMSE_Euclidean,${overallAccuracy.rmseEuclidean}`);
+        csvRows.push(`RMSE_X_Percent,${overallAccuracy.rmseXPercent}`);
+        csvRows.push(`RMSE_Y_Percent,${overallAccuracy.rmseYPercent}`);
+        csvRows.push(`RMSE_Euclidean_Percent,${overallAccuracy.rmseEuclideanPercent}`);
+    } else {
+        csvRows.push("No overall accuracy data");
+    }
+
+    // Create and download CSV
+    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' }); // turns all csv roes into a single string separated by new lines // blob is a file in memory
+    const url = URL.createObjectURL(blob);//points to the blob in memory (pretend it is a file (data stored but not saved on disk yet))
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'gaze_data_with_accuracy.csv'; //set the file name
+    a.click(); //simulate a click to trigger the download
+    URL.revokeObjectURL(url); // free up memory
+}
 
 
         // const calibrationPoints = [
@@ -999,54 +1072,169 @@ function createCanvas(video) {
         [0.02, 0.98], [0.25, 0.98], [0.5, 0.98], [0.75, 0.98], [0.98, 0.98]
         ];
 
+let currentPointIndex = 0; // Index of the current calibration point
+let dotElement = null; // Element to display the red dot
 
 
-        let currentPointIndex = 0; // Index of the current calibration point
-        let dotElement = null; // Element to display the red dot
+function showNextCalibrationPoint() { // Function to show the next calibration point
+    console.log('Showing point:', currentPointIndex + 1);
+    if (dotElement) {
+        console.log('removing previous dot');
+        document.body.removeChild(dotElement); // If a dot is already displayed, remove it
+        dotElement = null;
+    }
 
-        function showNextCalibrationPoint() { // Function to show the next calibration point
-        if (dotElement) { // If a dot is already displayed, remove it
-            document.body.removeChild(dotElement);
-            dotElement = null; // clear the old dot before showing the next one
-        }
+    if (currentPointIndex >= calibrationPoints.length) {// If all calibration points have been shown, finish calibration
+        console.log('Calibration complete');
+        const overallAccuracy = computeOverallAccuracy();
+        downloadCSV(collectedData, calibrationResults, overallAccuracy); // download CSV with gaze data and accuracy results
+        return;
+    }
 
-        if (currentPointIndex >= calibrationPoints.length) { // If all calibration points have been shown, finish calibration
-            console.log(" Calibration complete");
-            downloadCSV(collectedData); // call the download csv function to save the collected data
-            return;
-        }
+    const [xRatio, yRatio] = calibrationPoints[currentPointIndex];  // takes the next calibration point ratios
+    const x = window.innerWidth * xRatio;  // Calculate the x position based on the ratio and window width
+    const y = window.innerHeight * yRatio;
+    console.log('dot position:', { x, y });
+    currentCalibrationTarget = { x, y };//set red dot position to the current calibration target
+    isCollecting = false;// stop collecting until the next point is shown
+    predictedPositionsBuffer = [];
 
-        const [xRatio, yRatio] = calibrationPoints[currentPointIndex]; // takes the next calibration point ratios
-        const x = window.innerWidth * xRatio; // Calculate the x position based on the ratio and window width
-        const y = window.innerHeight * yRatio;
+    dotElement = document.createElement('div');  // Create a new div element for the red dot
+    dotElement.style.position = 'fixed';
+    dotElement.style.left = `${x - 10}px`;  // subtract 10 to center the dot
+    dotElement.style.top = `${y - 10}px`;
+    dotElement.style.width = '30px';
+    dotElement.style.height = '30px';
+    dotElement.style.backgroundColor = 'red';
+    dotElement.style.border = '2px solid white';
+    dotElement.style.borderRadius = '50%';
+    dotElement.style.zIndex = '3000';
+    dotElement.style.visibility = 'visible';
+    document.body.appendChild(dotElement); // Append the dot to the body
 
-        console.log(window.innerWidth+ "   eww  "+ window.innerHeight);
-
-        currentCalibrationTarget = { x, y }; //set red dot position to the current calibration target
-        isCollecting = false; // stop collecting until the next point is shown
-
-        dotElement = document.createElement('div'); // Create a new div element for the red dot
-        dotElement.style.position = 'fixed';
-        dotElement.style.left = `${x - 10}px`;
-        dotElement.style.top = `${y - 10}px`; // subtract 10 to center the dot
-        dotElement.style.width = '20px';
-        dotElement.style.height = '20px';
-        dotElement.style.backgroundColor = 'black';
-        dotElement.style.borderRadius = '50%';
-        dotElement.style.zIndex = 3000;
-        document.body.appendChild(dotElement); // Append the dot to the body
-
-        // Wait 1 second, then collect for 3 seconds
+    // Wait 1 second, then collect for 3 seconds
+    setTimeout(() => {
+        isCollecting = true;
+        console.log(`Collecting at point ${currentPointIndex + 1}`); // because index starts at 0
         setTimeout(() => {
-            isCollecting = true; 
-            console.log(` Collecting at point ${currentPointIndex + 1}`); // because index starts at 0
-            setTimeout(() => {
             isCollecting = false;
-            currentPointIndex++; // move to the next point
-            showNextCalibrationPoint(); //show next point 
-            }, 3000); // Collect data for 3 seconds at this point
-        }, 1000); // Wait 1 second before starting to collect data
-        }
+            if (predictedPositionsBuffer.length > 0) {
+                let sumX = 0, sumY = 0;
+                predictedPositionsBuffer.forEach(pos => {
+                    sumX += pos.x;
+                    sumY += pos.y;
+                });
+                const avgPredX = sumX / predictedPositionsBuffer.length;
+                const avgPredY = sumY / predictedPositionsBuffer.length;
+                const errorX = Math.abs(avgPredX - currentCalibrationTarget.x);
+                const errorY = Math.abs(avgPredY - currentCalibrationTarget.y);
+                const euclideanError = Math.sqrt(errorX ** 2 + errorY ** 2);
+                
+                // Calculate percentage errors
+                const errorXPercent = (errorX / window.innerWidth) * 100;
+                const errorYPercent = (errorY / window.innerHeight) * 100;
+                const screenDiagonal = Math.sqrt(window.innerWidth ** 2 + window.innerHeight ** 2);
+                const euclideanErrorPercent = (euclideanError / screenDiagonal) * 100;
+
+                calibrationResults.push({
+                    pointIndex: currentPointIndex,
+                    targetX: currentCalibrationTarget.x,
+                    targetY: currentCalibrationTarget.y,
+                    avgPredX: avgPredX,
+                    avgPredY: avgPredY,
+                    errorX: errorX,
+                    errorY: errorY,
+                    euclideanError: euclideanError,
+                    errorXPercent: errorXPercent,
+                    errorYPercent: errorYPercent,
+                    euclideanErrorPercent: euclideanErrorPercent
+                });
+
+                console.log(`Point ${currentPointIndex + 1} Accuracy:`);
+                console.log(`- Error X: ${errorX.toFixed(2)}px (${errorXPercent.toFixed(2)}%)`);
+                console.log(`- Error Y: ${errorY.toFixed(2)}px (${errorYPercent.toFixed(2)}%)`);
+                console.log(`- Euclidean: ${euclideanError.toFixed(2)}px (${euclideanErrorPercent.toFixed(2)}%)`);
+            } else {
+                console.warn(`No predicted positions collected for point ${currentPointIndex + 1}`);
+            }
+            currentPointIndex++;
+            showNextCalibrationPoint();
+        }, 3000);
+    }, 1000);
+}
+
+// function to compute overall accuracy metrics with percentages
+function computeOverallAccuracy() {
+    if (calibrationResults.length === 0) {
+        console.warn("No calibration results to compute accuracy");
+        return null;
+    }
+
+    let totalErrorX = 0, totalErrorY = 0, totalEuclidean = 0;
+    let totalErrorXPercent = 0, totalErrorYPercent = 0, totalEuclideanPercent = 0;
+    let sumSqErrorX = 0, sumSqErrorY = 0, sumSqEuclidean = 0;
+    let sumSqErrorXPercent = 0, sumSqErrorYPercent = 0, sumSqEuclideanPercent = 0;
+
+    calibrationResults.forEach(result => {
+        // absolute errors
+        totalErrorX += result.errorX;
+        totalErrorY += result.errorY;
+        totalEuclidean += result.euclideanError;
+        sumSqErrorX += result.errorX ** 2;
+        sumSqErrorY += result.errorY ** 2;
+        sumSqEuclidean += result.euclideanError ** 2;
+        
+        // percentage errors
+        totalErrorXPercent += result.errorXPercent;
+        totalErrorYPercent += result.errorYPercent;
+        totalEuclideanPercent += result.euclideanErrorPercent;
+        sumSqErrorXPercent += result.errorXPercent ** 2;
+        sumSqErrorYPercent += result.errorYPercent ** 2;
+        sumSqEuclideanPercent += result.euclideanErrorPercent ** 2;
+    });
+
+    const numPoints = calibrationResults.length;
+    
+    // mean Absolute Error (MAE)
+    const maeX = totalErrorX / numPoints;
+    const maeY = totalErrorY / numPoints;
+    const maeEuclidean = totalEuclidean / numPoints;
+    const maeXPercent = totalErrorXPercent / numPoints;
+    const maeYPercent = totalErrorYPercent / numPoints;
+    const maeEuclideanPercent = totalEuclideanPercent / numPoints;
+    
+    // root Mean Square Error (RMSE)
+    const rmseX = Math.sqrt(sumSqErrorX / numPoints);
+    const rmseY = Math.sqrt(sumSqErrorY / numPoints);
+    const rmseEuclidean = Math.sqrt(sumSqEuclidean / numPoints);
+    const rmseXPercent = Math.sqrt(sumSqErrorXPercent / numPoints);
+    const rmseYPercent = Math.sqrt(sumSqErrorYPercent / numPoints);
+    const rmseEuclideanPercent = Math.sqrt(sumSqEuclideanPercent / numPoints);
+
+    console.log("Overall Calibration Accuracy:");
+    console.log(`- MAE X: ${maeX.toFixed(2)}px (${maeXPercent.toFixed(2)}%)`);
+    console.log(`- MAE Y: ${maeY.toFixed(2)}px (${maeYPercent.toFixed(2)}%)`);
+    console.log(`- MAE Euclidean: ${maeEuclidean.toFixed(2)}px (${maeEuclideanPercent.toFixed(2)}%)`);
+    console.log(`- RMSE X: ${rmseX.toFixed(2)}px (${rmseXPercent.toFixed(2)}%)`);
+    console.log(`- RMSE Y: ${rmseY.toFixed(2)}px (${rmseYPercent.toFixed(2)}%)`);
+    console.log(`- RMSE Euclidean: ${rmseEuclidean.toFixed(2)}px (${rmseEuclideanPercent.toFixed(2)}%)`);
+
+    // return metrics for CSV including percentages
+    return {
+        maeX: maeX.toFixed(2),
+        maeY: maeY.toFixed(2),
+        maeEuclidean: maeEuclidean.toFixed(2),
+        maeXPercent: maeXPercent.toFixed(2),
+        maeYPercent: maeYPercent.toFixed(2),
+        maeEuclideanPercent: maeEuclideanPercent.toFixed(2),
+        rmseX: rmseX.toFixed(2),
+        rmseY: rmseY.toFixed(2),
+        rmseEuclidean: rmseEuclidean.toFixed(2),
+        rmseXPercent: rmseXPercent.toFixed(2),
+        rmseYPercent: rmseYPercent.toFixed(2),
+        rmseEuclideanPercent: rmseEuclideanPercent.toFixed(2)
+    };
+}
 
     // Temporal filter helper --> to be added////////////
     const sliding_window = 700; //sliding window length -> keep all gaze samples from last half second
@@ -1094,7 +1282,7 @@ function createCanvas(video) {
             // magnifier = createMagnifier();
             // magnifierCtx = magnifier.getContext('2d');
             continueDetection(video, detector, canvas, cursor);
-            // showNextCalibrationPoint();
+            showNextCalibrationPoint();
         }
 
 
