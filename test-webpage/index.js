@@ -21,7 +21,7 @@ let magnifierCtx = null;
 let magnifierActive = false;
 let frozenCaptureX = null;
 let frozenCaptureY = null;
-
+let wasMouthOpen = false; // for magnifier toggle
 
 const SCROLL_ZONE_HEIGHT = 0.1; // 10% OF the screen height for scroll zones
 const MAX_SCROLL_SPEED = 5; // max scroll speed (when I increased it became shaky)
@@ -139,12 +139,12 @@ function highlightCandidates(candidates) {
 }
 function createMagnifier() {
     const magnifier = document.createElement('canvas');
-    magnifier.width = 900;
-    magnifier.height = 200;
+    magnifier.width = 1200;
+    magnifier.height = 300;
     magnifier.style.position = 'fixed';
     magnifier.style.border = '2px solid #000';
     magnifier.style.borderRadius = '20px';
-    magnifier.style.zIndex = '100000'; 
+    magnifier.style.zIndex = '10000000000'; 
     magnifier.style.pointerEvents = 'none';
     magnifier.style.display = 'block'; 
     magnifier.style.backgroundColor = 'white';
@@ -764,8 +764,8 @@ async function updateMagnifier(magnifier, magnifierCtx, clampedX, clampedY){//, 
         const zoomFactor = 2;
         //const captureSize = 150; // Area to capture (will be zoomed 2x)
 
-        const captureWidth = magnifier.width / zoomFactor; // 500 / 4 = 125
-        const captureHeight = magnifier.height / zoomFactor; // 250 / 4 = 6
+        const captureWidth = magnifier.width / zoomFactor; 
+        const captureHeight = magnifier.height / zoomFactor; 
 
         // // Get cursor center position
         const cursorCenterX = clampedX //+ cursor.offsetWidth / 2;
@@ -820,7 +820,7 @@ async function updateMagnifier(magnifier, magnifierCtx, clampedX, clampedY){//, 
             0, 0, magnifier.width, magnifier.height
         );
 
-        // Add crosshair
+        // //Add crosshair
         // console.log("mewwww");
         // magnifierCtx.strokeStyle = 'red';
         // magnifierCtx.lineWidth = 2;
@@ -935,36 +935,80 @@ async function continueDetection(video, detector, canvas, cursor) {
         console.log('dx (pixels):', dx.toFixed(1), 'dy (pixels):', dy.toFixed(1));
         console.log('Cursor screen position:', { x: clampedX.toFixed(1), y: clampedY.toFixed(1) });
 
-       if (isMouthOpen(keypoints)) {
-    if (!magnifierActive) {
-        magnifier = createMagnifier();
-        magnifierCtx = magnifier.getContext('2d');
+//        if (isMouthOpen(keypoints)) {
+//     if (!magnifierActive) {
+//         magnifier = createMagnifier();
+//         magnifierCtx = magnifier.getContext('2d');
 
-        // Place magnifier at cursor ONCE
-        magnifier.style.left = `${clampedX - magnifier.width / 2}px`;
-        magnifier.style.top = `${clampedY - magnifier.height / 2}px`;
+//         // Place magnifier at cursor ONCE
+//         magnifier.style.left = `${clampedX - magnifier.width / 2}px`;
+//         magnifier.style.top = `${clampedY - magnifier.height / 2}px`;
 
-        // Freeze capture point
-        frozenCaptureX = clampedX;
-        frozenCaptureY = clampedY;
+//         // Freeze capture point
+//         frozenCaptureX = clampedX;
+//         frozenCaptureY = clampedY;
 
-        magnifier.style.display = 'block';
-        magnifierActive = true;
-    }
+//         magnifier.style.display = 'block';
+//         magnifierActive = true;
+//     }
 
-    // Always update, but use frozen coords
-    updateMagnifier(magnifier, magnifierCtx, frozenCaptureX, frozenCaptureY);
+//     // Always update, but use frozen coords
+//     updateMagnifier(magnifier, magnifierCtx, frozenCaptureX, frozenCaptureY);
 
-} else {
-    if (magnifierActive) {
-        magnifier.style.display = 'none';
-        magnifierActive = false;
-        frozenCaptureX = null;
-        frozenCaptureY = null;
-    }
-}
+// } else {
+//     if (magnifierActive) {
+//         magnifier.style.display = 'none';
+//         magnifierActive = false;
+//         frozenCaptureX = null;
+//         frozenCaptureY = null;
+//     }
+// }
 
 
+
+//         handleInteractions(clampedX, clampedY, cursor);
+//     } else {
+//         console.log('No face detected');
+//     }
+
+//     requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor)); // Call the function again for continuous detection
+// }
+
+// Magnifier toggle logic: detect rising edge (mouth opens)
+const isCurrentlyOpen = isMouthOpen(keypoints);
+        if (isCurrentlyOpen && !wasMouthOpen) {
+            
+            if (magnifierActive) {
+                // Deactivate
+                magnifier.style.display = 'none';
+                magnifierActive = false;
+                frozenCaptureX = null;
+                frozenCaptureY = null;
+                // Show main cursor
+                cursor.style.display = 'block';
+            } else {
+                // Activate
+                if (!magnifier) {
+                    magnifier = createMagnifier();
+                    magnifierCtx = magnifier.getContext('2d');
+                }
+                magnifier.style.left = `${clampedX - magnifier.width / 2}px`;
+                magnifier.style.top = `${clampedY - magnifier.height / 2}px`;
+                frozenCaptureX = clampedX;
+                frozenCaptureY = clampedY;
+                magnifier.style.display = 'block';
+                magnifierActive = true;
+                // Hide main cursor
+               // cursor.style.display = 'none';
+            }
+        }
+
+        // If active, update magnifier with frozen position
+        if (magnifierActive) {
+            updateMagnifier(magnifier, magnifierCtx, frozenCaptureX, frozenCaptureY);
+        }
+
+        wasMouthOpen = isCurrentlyOpen;
 
         handleInteractions(clampedX, clampedY, cursor);
     } else {
@@ -1019,8 +1063,9 @@ function createCanvas(video) {
         cursor.style.backgroundColor = 'red';
         cursor.style.borderRadius = '50%';
         cursor.style.pointerEvents = 'none'; // Prevent interaction with the cursor
-        cursor.style.zIndex = '100001'; // Ensure it appears above other content
+        cursor.style.zIndex = '1000001'; // Ensure it appears above other content
         document.body.appendChild(cursor);
+        
         return cursor;
     }
 
@@ -1154,6 +1199,7 @@ function createCanvas(video) {
 
 
         async function main() {
+            console.log("HAHAHAHAHAHAHAAHAHAHAHHAAA...");
              const video = await camera();
              if (!video) return;
             const canvas = createCanvas(video);
