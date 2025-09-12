@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>La Bella Italia - Restaurant Management</title>
+    <link rel="icon" href="./favicon.ico" type="image/x-icon">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&family=Playfair+Display:wght@500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.12.0/dist/tf.min.js"></script>
+    <style>
+      :root {
+        --primary: #d8b8a0; /* Nude beige */
+        --secondary: #8b7d6b; /* Warm taupe */
+        --accent: #e8b923; /* Subtle gold */
+        --background: #f5efe6; /* Creamy beige */
+        --card-bg: #ffffff; /* Soft white */
+        --text: #3c2f2f; /* Dark brown */
+        --border: #e0d7c9; /* Light beige */
+        --shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+        --urgent: #e57373; /* Muted coral for alerts */
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: 'Poppins', sans-serif;
+        margin: 0;
+        padding: 0;
+        background-color: var(--background);
+        color: var(--text);
+        line-height: 1.6;
+      }
+
+      header {
+        background: linear-gradient(135deg, var(--primary) 0%, #e6ccb2 100%);
+        color: var(--text);
+        padding: 24px;
+        text-align: center;
+        box-shadow: var(--shadow);
+      }
+
+      header h1 {
+        font-family: 'Playfair Display', serif;
+        margin: 0;
+        font-size: 34px;
+        font-weight: 700;
+      }
+
+      header p {
+        margin: 8px 0 0;
+        font-size: 15px;
+        opacity: 0.85;
+      }
+
+      nav {
+        background-color: var(--secondary);
+        padding: 12px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        justify-content: center;
+      }
+
+      nav button {
+        background-color: #a69a8b;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background-color 0.3s, transform 0.2s, box-shadow 0.2s;
+      }
+
+      nav button:hover {
+        background-color: #b0a599;
+        transform: translateY(-2px);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+      }
+
+      nav button i {
+        margin-right: 8px;
+      }
+
+      main {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+        padding: 24px;
+        max-width: 1440px;
+        margin: 0 auto;
+      }
+
+      section {
+        background: var(--card-bg);
+        border-radius: 12px;
+        padding: 24px;
+        box-shadow: var(--shadow);
+        overflow-y: auto;
+        height: 520px;
+        transition: transform 0.2s;
+      }
+
+      section:hover {
+        transform: translateY(-4px);
+      }
+
+      h2 {
+        font-family: 'Playfair Display', serif;
+        margin: 0 0 16px;
+        font-size: 24px;
+        font-weight: 500;
+        color: var(--secondary);
+      }
+
+      .orders-grid, .menu-grid, .inventory-grid, .staff-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 16px;
+      }
+
+      .item {
+        background: var(--card-bg);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 16px;
+        text-align: center;
+        font-size: 13px;
+        transition: box-shadow 0.3s, transform 0.2s;
+        position: relative;
+      }
+
+      .item:hover {
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        transform: translateY(-2px);
+      }
+
+      .item span {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 8px;
+        color: var(--text);
+      }
+
+      .item p {
+        margin: 4px 0;
+        font-size: 12px;
+        opacity: 0.8;
+      }
+
+      .btn-small {
+        background-color: var(--primary);
+        color: var(--text);
+        border: none;
+        padding: 8px 16px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background-color 0.3s, transform 0.2s;
+        margin: 4px;
+      }
+
+      .btn-small:hover {
+        background-color: #e6ccb2;
+        transform: scale(1.05);
+      }
+
+      .btn-delete {
+        background-color: var(--urgent);
+        color: white;
+      }
+
+      .btn-delete:hover {
+        background-color: #d32f2f;
+      }
+
+      .btn-edit {
+        background-color: var(--accent);
+        color: var(--text);
+      }
+
+      .btn-edit:hover {
+        background-color: #ffb300;
+      }
+
+      form {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        margin-top: 16px;
+      }
+
+      label {
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--text);
+      }
+
+      input, select {
+        padding: 10px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        font-size: 14px;
+        background: #f9f7f2;
+        transition: border-color 0.3s, box-shadow 0.2s;
+      }
+
+      input:focus, select:focus {
+        border-color: var(--secondary);
+        box-shadow: 0 0 0 2px rgba(139, 125, 107, 0.2);
+        outline: none;
+      }
+
+      .table-status {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 16px;
+      }
+
+      .table {
+        background: #f0f4f8;
+        border: 1px solid #d6e0fa;
+        border-radius: 8px;
+        padding: 16px;
+        text-align: center;
+        font-size: 13px;
+      }
+
+      .table span {
+        font-weight: 600;
+        color: #1565c0;
+      }
+
+      .staff-grid .item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .scroll-area {
+        height: 320px;
+        overflow-y: auto;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 16px;
+        background: var(--card-bg);
+      }
+
+      .scroll-area p {
+        margin: 8px 0;
+        font-size: 13px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px;
+        border-radius: 4px;
+        transition: background-color 0.2s;
+      }
+
+      .scroll-area p:hover {
+        background-color: #f9f7f2;
+      }
+
+      .dense-buttons {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(60px, 1fr));
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      .dense-btn {
+        background-color: #a69a8b;
+        color: white;
+        border: none;
+        padding: 8px;
+        border-radius: 6px;
+        font-size: 12px;
+        cursor: pointer;
+        transition: background-color 0.3s, transform 0.2s;
+      }
+
+      .dense-btn:hover {
+        background-color: #b0a599;
+        transform: scale(1.05);
+      }
+
+      .badge-urgent {
+        background-color: var(--urgent);
+        color: white;
+        font-size: 11px;
+        padding: 4px 8px;
+        border-radius: 12px;
+        position: absolute;
+        top: -8px;
+        right: -8px;
+      }
+
+      footer {
+        background-color: var(--secondary);
+        color: white;
+        text-align: center;
+        padding: 12px;
+        position: fixed;
+        bottom: 0;
+        width: 100%;
+        font-size: 14px;
+        box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
+      }
+
+      @media (max-width: 768px) {
+        main {
+          grid-template-columns: 1fr;
+        }
+        section {
+          height: 420px;
+        }
+        header h1 {
+          font-size: 28px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>La Bella Italia - Management Dashboard</h1>
+      <p>Real-Time Orders | Menu & Inventory | Staff & Reservations</p>
+    </header>
+    <nav>
+      <button id="nav-home"><i class="fas fa-home"></i> Home</button>
+      <button id="nav-orders"><i class="fas fa-utensils"></i> Orders</button>
+      <button id="nav-menu"><i class="fas fa-book"></i> Menu</button>
+      <button id="nav-inventory"><i class="fas fa-boxes"></i> Inventory</button>
+      <button id="nav-staff"><i class="fas fa-users"></i> Staff</button>
+      <button id="nav-reservations"><i class="fas fa-calendar-check"></i> Reservations</button>
+      <button id="nav-reports"><i class="fas fa-chart-bar"></i> Reports</button>
+      <button id="nav-settings"><i class="fas fa-cog"></i> Settings</button>
+      <button id="nav-logout"><i class="fas fa-sign-out-alt"></i> Logout</button>
+      <button id="nav-help"><i class="fas fa-question-circle"></i> Help</button>
+    </nav>
+    <main>
+      <section id="orders">
+        <h2>Live Orders (10 Active)</h2>
+        <div class="table-status">
+          <div class="table">
+            <span>Table 1 - 2 Guests</span>
+            <p>Pasta Alfredo, Red Wine</p>
+            <p>Placed: 7:00 PM</p>
+            <button class="btn-small" id="order-t1-update">Send to Kitchen</button>
+            <button class="btn-small btn-edit" id="order-t1-serve">Mark Served</button>
+            <button class="btn-small btn-delete" id="order-t1-cancel">Cancel</button>
+          </div>
+          <div class="table">
+            <span>Table 2 - 4 Guests</span>
+            <p>Margherita Pizza, Salad</p>
+            <p>Placed: 7:10 PM</p>
+            <button class="btn-small" id="order-t2-update">Send to Kitchen</button>
+            <button class="btn-small btn-edit" id="order-t2-serve">Mark Served</button>
+            <button class="btn-small btn-delete" id="order-t2-cancel">Cancel</button>
+          </div>
+          <div class="table">
+            <span>Table 3 - 3 Guests</span>
+            <p>Steak, Beer</p>
+            <p>Placed: 7:20 PM</p>
+            <button class="btn-small" id="order-t3-update">Send to Kitchen</button>
+            <button class="btn-small btn-edit" id="order-t3-serve">Mark Served</button>
+            <button class="btn-small btn-delete" id="order-t3-cancel">Cancel</button>
+          </div>
+          <div class="table">
+            <span>Table 4 - 5 Guests</span>
+            <p>Lasagna, Tiramisu</p>
+            <p>Placed: 7:30 PM</p>
+            <button class="btn-small" id="order-t4-update">Send to Kitchen</button>
+            <button class="btn-small btn-edit" id="order-t4-serve">Mark Served</button>
+            <button class="btn-small btn-delete" id="order-t4-cancel">Cancel</button>
+          </div>
+        </div>
+        <div class="dense-buttons">
+          <button class="dense-btn" id="quick-action-1">Rush Order</button>
+          <button class="dense-btn" id="quick-action-2">Split Bill</button>
+          <button class="dense-btn" id="quick-action-3">Add Tip</button>
+          <button class="dense-btn" id="quick-action-4">Apply Discount</button>
+          <button class="dense-btn" id="quick-action-5">Print Receipt</button>
+          <button class="dense-btn" id="quick-action-6">Notify Kitchen</button>
+        </div>
+      </section>
+      <section id="menu">
+        <h2>Menu Management</h2>
+        <div class="menu-grid">
+          <div class="item">
+            <span>Bruschetta - $8.50</span>
+            <p>Appetizer</p>
+            <select id="menu-bruschetta-status">
+              <option>Available</option>
+              <option>Unavailable</option>
+            </select>
+            <button class="btn-small" id="menu-bruschetta-edit">Edit</button>
+            <button class="btn-small btn-delete" id="menu-bruschetta-del">Remove</button>
+          </div>
+          <div class="item">
+            <span>Pasta Alfredo - $14.00</span>
+            <p>Main</p>
+            <select id="menu-alfredo-status">
+              <option>Available</option>
+              <option>Unavailable</option>
+            </select>
+            <button class="btn-small" id="menu-alfredo-edit">Edit</button>
+            <button class="btn-small btn-delete" id="menu-alfredo-del">Remove</button>
+          </div>
+          <div class="item">
+            <span>Margherita Pizza - $12.00</span>
+            <p>Main</p>
+            <select id="menu-pizza-status">
+              <option>Available</option>
+              <option>Unavailable</option>
+            </select>
+            <button class="btn-small" id="menu-pizza-edit">Edit</button>
+            <button class="btn-small btn-delete" id="menu-pizza-del">Remove</button>
+          </div>
+          <div class="item">
+            <span>Caprese Salad - $9.00</span>
+            <p>Salad</p>
+            <select id="menu-salad-status">
+              <option>Available</option>
+              <option>Unavailable</option>
+            </select>
+            <button class="btn-small" id="menu-salad-edit">Edit</button>
+            <button class="btn-small btn-delete" id="menu-salad-del">Remove</button>
+          </div>
+          <div class="item">
+            <span>Tiramisu - $7.50</span>
+            <p>Dessert</p>
+            <select id="menu-tiramisu-status">
+              <option>Available</option>
+              <option>Unavailable</option>
+            </select>
+            <button class="btn-small" id="menu-tiramisu-edit">Edit</button>
+            <button class="btn-small btn-delete" id="menu-tiramisu-del">Remove</button>
+          </div>
+          <div class="item">
+            <span>Chianti Wine - $10.00</span>
+            <p>Drink</p>
+            <select id="menu-wine-status">
+              <option>Available</option>
+              <option>Unavailable</option>
+            </select>
+            <button class="btn-small" id="menu-wine-edit">Edit</button>
+            <button class="btn-small btn-delete" id="menu-wine-del">Remove</button>
+          </div>
+        </div>
+        <form>
+          <label for="new-menu-item">Add Menu Item:</label>
+          <input type="text" id="new-menu-item" placeholder="Name, Price, Category">
+          <button class="btn-small" id="menu-add">Add Item</button>
+        </form>
+      </section>
+      <section id="inventory">
+        <h2>Inventory Tracking</h2>
+        <div class="inventory-grid">
+          <div class="item">
+            <span>Tomatoes: 5/50</span>
+            <span class="badge-urgent">Low Stock</span>
+            <button class="btn-small" id="inv-tomatoes-restock">Restock</button>
+          </div>
+          <div class="item">
+            <span>Mozzarella: 25/100</span>
+            <button class="btn-small" id="inv-mozzarella-restock">Restock</button>
+          </div>
+          <div class="item">
+            <span>Flour: 40/200</span>
+            <button class="btn-small" id="inv-flour-restock">Restock</button>
+          </div>
+          <div class="item">
+            <span>Olive Oil: 7/50</span>
+            <span class="badge-urgent">Low Stock</span>
+            <button class="btn-small" id="inv-oil-restock">Restock</button>
+          </div>
+          <div class="item">
+            <span>Basil: 20/100</span>
+            <button class="btn-small" id="inv-basil-restock">Restock</button>
+          </div>
+          <div class="item">
+            <span>Wine Bottles: 12/50</span>
+            <button class="btn-small" id="inv-wine-restock">Restock</button>
+          </div>
+        </div>
+        <form>
+          <label for="new-inventory">Add Inventory Item:</label>
+          <input type="text" id="new-inventory" placeholder="Item, Quantity, Threshold">
+          <button class="btn-small" id="inv-add">Add Item</button>
+        </form>
+      </section>
+      <section id="staff">
+        <h2>Staff Schedule</h2>
+        <div class="staff-grid">
+          <div class="item">
+            <span>John - Head Chef</span>
+            <p>Shift: 12 PM - 8 PM</p>
+            <p>Status: On Duty</p>
+            <button class="btn-small" id="staff-john-assign">Assign Task</button>
+            <button class="btn-small btn-delete" id="staff-john-remove">Remove</button>
+          </div>
+          <div class="item">
+            <span>Maria - Waiter</span>
+            <p>Shift: 2 PM - 10 PM</p>
+            <p>Status: On Break</p>
+            <button class="btn-small" id="staff-maria-assign">Assign Task</button>
+            <button class="btn-small btn-delete" id="staff-maria-remove">Remove</button>
+          </div>
+          <div class="item">
+            <span>Luca - Bartender</span>
+            <p>Shift: 3 PM - 11 PM</p>
+            <p>Status: On Duty</p>
+            <button class="btn-small" id="staff-luca-assign">Assign Task</button>
+            <button class="btn-small btn-delete" id="staff-luca-remove">Remove</button>
+          </div>
+          <div class="item">
+            <span>Sofia - Hostess</span>
+            <p>Shift: 11 AM - 7 PM</p>
+            <p>Status: On Duty</p>
+            <button class="btn-small" id="staff-sofia-assign">Assign Task</button>
+            <button class="btn-small btn-delete" id="staff-sofia-remove">Remove</button>
+          </div>
+        </div>
+        <form>
+          <label for="new-staff">Add Staff Member:</label>
+          <input type="text" id="new-staff" placeholder="Name, Role, Shift">
+          <button class="btn-small" id="staff-add">Add Staff</button>
+        </form>
+      </section>
+      <section id="reservations" class="scroll-area">
+        <h2>Reservations (Today)</h2>
+        <p>Smith - 4 Guests, 7:00 PM, Confirmed <button class="btn-small" id="res-1-seat">Seat</button> <button class="btn-small btn-delete" id="res-1-cancel">Cancel</button></p>
+        <p>Johnson - 2 Guests, 7:30 PM, Pending <button class="btn-small" id="res-2-confirm">Confirm</button> <button class="btn-small btn-edit" id="res-2-edit">Edit</button></p>
+        <p>Brown - 6 Guests, 8:00 PM, Confirmed <button class="btn-small" id="res-3-seat">Seat</button> <button class="btn-small btn-delete" id="res-3-cancel">Cancel</button></p>
+        <p>Taylor - 3 Guests, 8:30 PM, Waitlisted <button class="btn-small" id="res-4-confirm">Confirm</button> <button class="btn-small btn-delete" id="res-4-cancel">Cancel</button></p>
+        <p>Wilson - 5 Guests, 9:00 PM, Confirmed <button class="btn-small" id="res-5-seat">Seat</button> <button class="btn-small btn-edit" id="res-5-edit">Edit</button></p>
+      </section>
+      <section id="reports">
+        <h2>Daily Reports</h2>
+        <form>
+          <label for="revenue">Total Revenue:</label>
+          <input type="text" id="revenue" placeholder="$0.00">
+          <label for="top-item">Top-Selling Item:</label>
+          <input type="text" id="top-item" placeholder="e.g., Margherita Pizza">
+          <label for="notes">Manager Notes:</label>
+          <input type="text" id="notes" placeholder="Enter notes...">
+          <div class="dense-buttons">
+            <button class="btn-small" id="report-submit">Submit Report</button>
+            <button class="btn-small btn-edit" id="report-export">Export CSV</button>
+            <button class="btn-small" id="report-print">Print</button>
+            <button class="btn-small" id="report-trend">View Trends</button>
+          </div>
+        </form>
+      </section>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-landmarks-detection"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="index.js"></script>
+  </body>
+</html>
