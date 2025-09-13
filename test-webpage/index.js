@@ -16,12 +16,14 @@ let currentCalibrationTarget = null; // Current red dot position
 let isCollecting = false; // Whether we are currently collecting data
 let taskCompletions = 0;
 let errors = 0;
-let magnifier = null;
-let magnifierCtx = null;
-let magnifierActive = false;
 let frozenCaptureX = null;
 let frozenCaptureY = null;
 let wasMouthOpen = false; // for magnifier toggle
+let isZoomed = false; // Tracks zoom state (false = normal, true = zoomed in)
+let zoomLevel = 1; // Current zoom level (1 = normal, >1 = zoomed in)
+const ZOOM_IN_LEVEL = 3; // Zoom-in scale (e.g., 2x magnification)
+const ZOOM_OUT_LEVEL = 1; // Zoom-out scale (returns to normal view)
+const ZOOM_TRANSITION = 'transform 0.3s ease'; // Smooth CSS transition for zoom effects
 
 const SCROLL_ZONE_HEIGHT = 0.1; // 10% OF the screen height for scroll zones
 const MAX_SCROLL_SPEED = 5; // max scroll speed (when I increased it became shaky)
@@ -137,21 +139,8 @@ function highlightCandidates(candidates) {
         previousHighlights.push({ element, originalStyle });
     });
 }
-function createMagnifier() {
-    const magnifier = document.createElement('canvas');
-    magnifier.width = 1200;
-    magnifier.height = 300;
-    magnifier.style.position = 'fixed';
-    magnifier.style.border = '2px solid #000';
-    magnifier.style.borderRadius = '20px';
-    magnifier.style.zIndex = '10000000000'; 
-    magnifier.style.pointerEvents = 'none';
-    magnifier.style.display = 'block'; 
-    magnifier.style.backgroundColor = 'white';
-    document.body.appendChild(magnifier);
-    console.log('Magnifier created and appended to DOM:', magnifier);
-    return magnifier;
-}
+
+
 
 let pressTimer = 0;
 let pressInterval = null;
@@ -639,6 +628,17 @@ function positionCursor(dx, dy, cursor) {
     return { clampedX, clampedY };
 }
 
+
+function applyZoom(scale, cursorX, cursorY) {
+  const body = document.body;
+  body.style.transform = `scale(${scale})`;
+  body.style.transformOrigin = `${cursorX}px ${cursorY}px`;
+  body.style.transition = ZOOM_TRANSITION;
+  zoomLevel = scale;
+  isZoomed = scale > 1;
+}
+
+
 // function to handle interactions (dwell, click, scroll)
 function handleInteractions(clampedX, clampedY, cursor) {
     // Only interact when not calibrating
@@ -757,83 +757,7 @@ function isMouthOpen(keypoints) {
 }
 
 
-// Function to handle magnifier
-async function updateMagnifier(magnifier, magnifierCtx, clampedX, clampedY){//, cursor) {
-    try {
-        console.log("mew");
-        const zoomFactor = 2;
-        //const captureSize = 150; // Area to capture (will be zoomed 2x)
 
-        const captureWidth = magnifier.width / zoomFactor; 
-        const captureHeight = magnifier.height / zoomFactor; 
-
-        // // Get cursor center position
-        const cursorCenterX = clampedX //+ cursor.offsetWidth / 2;
-        const cursorCenterY = clampedY //+ cursor.offsetHeight / 2;
-
-        // // Position magnifier near cursor
-        // magnifier.style.left = `${cursorCenterX - magnifier.width / 2}px`; 
-        // magnifier.style.top = `${cursorCenterY - magnifier.height / 2}px`;
-
-        // Create temporary canvas for capture
-        const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = captureWidth;
-        tempCanvas.height = captureHeight;
-        const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true, alpha: true });
-
-        // Fill with white background first
-        tempCtx.fillStyle = 'white';
-        tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-
-        // Capture screen area - we need to use html2canvas for proper capturing
-        await new Promise(resolve => {
-            html2canvas(document.body, {
-                x: cursorCenterX - captureWidth / 2,
-                y: cursorCenterY - captureHeight / 2,
-                width: captureWidth,
-                height: captureHeight,
-                scale: zoomFactor,
-                logging: false,
-                useCORS: true,
-                onclone: (clonedDoc) => {
-                    // Hide the magnifier in the clone to avoid recursion
-                    const canvases = clonedDoc.querySelectorAll('canvas[style*="fixed"]');
-                    canvases.forEach(canvas => {
-                        canvas.style.display = 'none';
-                        console.log('Hid canvas in cloned DOM:', canvas);
-                    })
-                }
-            }).then(canvas => {
-                tempCtx.drawImage(canvas, 0, 0, captureWidth, captureHeight);
-                resolve();
-            });
-        });
-
-        // Draw to magnifier
-        magnifierCtx.clearRect(0, 0, magnifier.width, magnifier.height);
-        magnifierCtx.imageSmoothingEnabled = true;
-        magnifierCtx.imageSmoothingQuality = 'high'; 
-
-        magnifierCtx.drawImage(
-            tempCanvas,
-            0, 0, captureWidth, captureHeight,
-            0, 0, magnifier.width, magnifier.height
-        );
-
-        // //Add crosshair
-        // console.log("mewwww");
-        // magnifierCtx.strokeStyle = 'red';
-        // magnifierCtx.lineWidth = 2;
-        // magnifierCtx.beginPath();
-        // magnifierCtx.moveTo(magnifier.width / 2, 0);
-        // magnifierCtx.lineTo(magnifier.width / 2, magnifier.height);
-        // magnifierCtx.moveTo(0, magnifier.height / 2);
-        // magnifierCtx.lineTo(magnifier.width, magnifier.height / 2);
-        // magnifierCtx.stroke();
-    } catch (e) {
-        console.warn("Magnifier error:", e);
-    }
-}
 
 function calculateEAR(eyePoints) {  // eyePoints: array of 6 landmarks per eye (e.g., for left: [33,133,159,145,158,153]) // calculates the Eye Aspect Ratio (EAR) for the given eye landmarks
     const vertical1 = calculateDistance(eyePoints[1], eyePoints[5]);
@@ -987,46 +911,19 @@ async function continueDetection(video, detector, canvas, cursor) {
 
 // Magnifier toggle logic: detect rising edge (mouth opens)
 const isCurrentlyOpen = isMouthOpen(keypoints);
-        if (isCurrentlyOpen && !wasMouthOpen) {
-            
-            if (magnifierActive) {
-                // Deactivate
-                magnifier.style.display = 'none';
-                magnifierActive = false;
-                frozenCaptureX = null;
-                frozenCaptureY = null;
-                // Show main cursor
-                cursor.style.display = 'block';
-            } else {
-                // Activate
-                if (!magnifier) {
-                    magnifier = createMagnifier();
-                    magnifierCtx = magnifier.getContext('2d');
-                }
-                magnifier.style.left = `${clampedX - magnifier.width / 2}px`;
-                magnifier.style.top = `${clampedY - magnifier.height / 2}px`;
-                frozenCaptureX = clampedX;
-                frozenCaptureY = clampedY;
-                magnifier.style.display = 'block';
-                magnifierActive = true;
-                // Hide main cursor
-               // cursor.style.display = 'none';
-            }
-        }
-
-        // If active, update magnifier with frozen position
-        if (magnifierActive) {
-            updateMagnifier(magnifier, magnifierCtx, frozenCaptureX, frozenCaptureY);
-        }
-
-        wasMouthOpen = isCurrentlyOpen;
-
-        handleInteractions(clampedX, clampedY, cursor);
-    } else {
-        console.log('No face detected');
+    if (isCurrentlyOpen && !wasMouthOpen) {
+      if (isZoomed) {
+        applyZoom(ZOOM_OUT_LEVEL, clampedX, clampedY);
+      } else {
+        applyZoom(ZOOM_IN_LEVEL, clampedX, clampedY);
+      }
     }
-
-    requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor)); // Call the function again for continuous detection
+    wasMouthOpen = isCurrentlyOpen;
+    handleInteractions(clampedX, clampedY, cursor);
+  } else {
+    console.log('No face detected');
+  }
+  requestAnimationFrame(() => continueDetection(video, detector, canvas, cursor));
 }
 
 
@@ -1378,13 +1275,7 @@ function computeOverallAccuracy() {
 
     /////////////////////////////////////////////////////
 
-        function testMagnifier(x, y) {
-            if (!magnifier || !magnifierCtx) {
-                magnifier = createMagnifier();
-                magnifierCtx = magnifier.getContext('2d');
-            }
-            updateMagnifier(magnifier, magnifierCtx, x, y);
-        }
+
 
 
         async function main() {
